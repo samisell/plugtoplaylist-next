@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { motion } from "framer-motion";
 import {
   Settings,
@@ -19,6 +19,7 @@ import {
   Smartphone,
   Trash2,
   Download,
+  Loader2,
 } from "lucide-react";
 import { UserLayout } from "@/components/user/UserLayout";
 import { GoldButton, GlowCard } from "@/components/shared";
@@ -38,21 +39,104 @@ const settingSections = [
 export default function UserSettingsPage() {
   const [activeSection, setActiveSection] = useState("profile");
   const [showPassword, setShowPassword] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [payments, setPayments] = useState<any[]>([]);
   const [profileData, setProfileData] = useState({
-    name: "Alex Rivera",
-    email: "alex@email.com",
-    phone: "+1 (555) 123-4567",
-    bio: "Independent artist passionate about creating music that moves people.",
-    genre: "Pop, R&B",
-    location: "Los Angeles, CA",
+    name: "",
+    email: "",
+    phone: "",
+    bio: "",
+    genre: "",
+    location: "",
+    referralCode: "",
+    walletBalance: 0,
   });
 
+  useEffect(() => {
+    async function fetchData() {
+      try {
+        setLoading(true);
+        const storedUser = localStorage.getItem("user");
+        if (!storedUser) {
+          setLoading(false);
+          return;
+        }
+        const user = JSON.parse(storedUser);
+
+        // Fetch user profile
+        const userRes = await fetch(`/api/user?userId=${user.id}`);
+        const { user: profile } = await userRes.json();
+        if (profile) {
+          setProfileData({
+            name: profile.name || "",
+            email: profile.email || "",
+            phone: profile.phone || "",
+            bio: profile.bio || "",
+            genre: profile.genre || "",
+            location: profile.location || "",
+            referralCode: profile.referralCode || "",
+            walletBalance: profile.walletBalance || 0,
+          });
+        }
+
+        // Fetch payments
+        const payRes = await fetch(`/api/payments?userId=${user.id}`);
+        const { payments: history } = await payRes.json();
+        setPayments(history || []);
+      } catch (error) {
+        console.error("Error fetching settings data:", error);
+      } finally {
+        setLoading(false);
+      }
+    }
+    fetchData();
+  }, []);
+
   const handleSave = async () => {
-    setSaving(true);
-    await new Promise((resolve) => setTimeout(resolve, 1500));
-    setSaving(false);
+    try {
+      setSaving(true);
+      const storedUser = localStorage.getItem("user");
+      if (!storedUser) return;
+      const user = JSON.parse(storedUser);
+
+      const res = await fetch("/api/user", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          userId: user.id,
+          name: profileData.name,
+          phone: profileData.phone,
+          bio: profileData.bio,
+          genre: profileData.genre,
+          location: profileData.location,
+        }),
+      });
+
+      if (!res.ok) throw new Error("Failed to update profile");
+      
+      // Update local storage name if changed
+      const updatedUser = { ...user, name: profileData.name };
+      localStorage.setItem("user", JSON.stringify(updatedUser));
+      
+      alert("Profile updated successfully!");
+    } catch (error) {
+      console.error(error);
+      alert("Error saving profile");
+    } finally {
+      setSaving(false);
+    }
   };
+
+  if (loading) {
+    return (
+      <UserLayout title="Settings" subtitle="Manage your account preferences">
+        <div className="flex items-center justify-center py-20">
+          <Loader2 className="w-12 h-12 text-gold animate-spin" />
+        </div>
+      </UserLayout>
+    );
+  }
 
   return (
     <UserLayout
@@ -98,34 +182,12 @@ export default function UserSettingsPage() {
               animate={{ opacity: 1, y: 0 }}
               className="space-y-6"
             >
-              {/* Avatar */}
-              <GlowCard variant="premium" className="p-5">
-                <h3 className="text-lg font-semibold text-white mb-4">Profile Picture</h3>
-                <div className="flex items-center gap-6">
-                  <div className="relative">
-                    <div className="w-24 h-24 rounded-xl bg-gold/20 border-2 border-gold/30 flex items-center justify-center">
-                      <User className="w-12 h-12 text-gold" />
-                    </div>
-                    <button className="absolute -bottom-2 -right-2 w-8 h-8 rounded-lg bg-gold text-luxury-black flex items-center justify-center hover:bg-gold/90 transition-colors">
-                      <Camera className="w-4 h-4" />
-                    </button>
-                  </div>
-                  <div>
-                    <p className="text-white font-medium mb-1">Alex Rivera</p>
-                    <p className="text-sm text-luxury-gray mb-3">JPG, PNG or GIF. Max 2MB.</p>
-                    <GoldButton variant="outline" size="sm">
-                      Upload Photo
-                    </GoldButton>
-                  </div>
-                </div>
-              </GlowCard>
-
               {/* Personal Info */}
               <GlowCard variant="default" className="p-5">
                 <h3 className="text-lg font-semibold text-white mb-4">Personal Information</h3>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div className="space-y-2">
-                    <Label className="text-white">Full Name</Label>
+                    <Label className="text-white text-left block">Full Name</Label>
                     <Input
                       value={profileData.name}
                       onChange={(e) => setProfileData({ ...profileData, name: e.target.value })}
@@ -133,15 +195,15 @@ export default function UserSettingsPage() {
                     />
                   </div>
                   <div className="space-y-2">
-                    <Label className="text-white">Email</Label>
+                    <Label className="text-white text-left block">Email (Read-only)</Label>
                     <Input
                       type="email"
                       value={profileData.email}
-                      onChange={(e) => setProfileData({ ...profileData, email: e.target.value })}
-                      className="bg-luxury-lighter border-gold/20 focus:border-gold text-white"
+                      disabled
+                      className="bg-luxury-lighter border-gold/10 text-luxury-gray opacity-70 cursor-not-allowed"
                     />
                   </div>
-                  <div className="space-y-2">
+                  <div className="space-y-2 text-left">
                     <Label className="text-white">Phone</Label>
                     <Input
                       value={profileData.phone}
@@ -149,7 +211,7 @@ export default function UserSettingsPage() {
                       className="bg-luxury-lighter border-gold/20 focus:border-gold text-white"
                     />
                   </div>
-                  <div className="space-y-2">
+                  <div className="space-y-2 text-left">
                     <Label className="text-white">Location</Label>
                     <Input
                       value={profileData.location}
@@ -157,7 +219,7 @@ export default function UserSettingsPage() {
                       className="bg-luxury-lighter border-gold/20 focus:border-gold text-white"
                     />
                   </div>
-                  <div className="space-y-2 md:col-span-2">
+                  <div className="space-y-2 md:col-span-2 text-left">
                     <Label className="text-white">Bio</Label>
                     <textarea
                       value={profileData.bio}
@@ -165,204 +227,20 @@ export default function UserSettingsPage() {
                       className="w-full h-24 bg-luxury-lighter border border-gold/20 rounded-lg p-3 text-white placeholder:text-luxury-gray focus:border-gold focus:outline-none resize-none"
                     />
                   </div>
-                  <div className="space-y-2">
-                    <Label className="text-white">Genre(s)</Label>
-                    <Input
-                      value={profileData.genre}
-                      onChange={(e) => setProfileData({ ...profileData, genre: e.target.value })}
-                      className="bg-luxury-lighter border-gold/20 focus:border-gold text-white"
-                    />
+                </div>
+              </GlowCard>
+
+              {/* Referral Info */}
+              <GlowCard variant="premium" className="p-5">
+                <h3 className="text-lg font-semibold text-white mb-4">Referral System</h3>
+                <div className="p-4 bg-gold/5 border border-gold/10 rounded-lg">
+                  <p className="text-sm text-luxury-gray mb-2">Your unique referral code:</p>
+                  <div className="text-2xl font-bold text-gold tracking-widest uppercase">
+                    {profileData.referralCode || "GETTING..."}
                   </div>
-                </div>
-              </GlowCard>
-
-              {/* Social Links */}
-              <GlowCard variant="default" className="p-5">
-                <h3 className="text-lg font-semibold text-white mb-4">Social Links</h3>
-                <div className="space-y-4">
-                  {[
-                    { label: "Spotify Artist URL", placeholder: "https://open.spotify.com/artist/..." },
-                    { label: "YouTube Channel", placeholder: "https://youtube.com/@..." },
-                    { label: "Instagram", placeholder: "https://instagram.com/..." },
-                    { label: "Twitter/X", placeholder: "https://twitter.com/..." },
-                  ].map((social, index) => (
-                    <div key={index} className="space-y-2">
-                      <Label className="text-white">{social.label}</Label>
-                      <Input
-                        placeholder={social.placeholder}
-                        className="bg-luxury-lighter border-gold/20 focus:border-gold text-white placeholder:text-luxury-gray"
-                      />
-                    </div>
-                  ))}
-                </div>
-              </GlowCard>
-            </motion.div>
-          )}
-
-          {/* Security Section */}
-          {activeSection === "security" && (
-            <motion.div
-              initial={{ opacity: 0, y: 10 }}
-              animate={{ opacity: 1, y: 0 }}
-              className="space-y-6"
-            >
-              {/* Change Password */}
-              <GlowCard variant="default" className="p-5">
-                <h3 className="text-lg font-semibold text-white mb-4 flex items-center gap-2">
-                  <Key className="w-5 h-5 text-gold" />
-                  Change Password
-                </h3>
-                <div className="space-y-4 max-w-md">
-                  <div className="space-y-2">
-                    <Label className="text-white">Current Password</Label>
-                    <div className="relative">
-                      <Input
-                        type={showPassword ? "text" : "password"}
-                        placeholder="••••••••"
-                        className="bg-luxury-lighter border-gold/20 focus:border-gold text-white pr-10"
-                      />
-                      <button
-                        type="button"
-                        onClick={() => setShowPassword(!showPassword)}
-                        className="absolute right-3 top-1/2 -translate-y-1/2 text-luxury-gray hover:text-white"
-                      >
-                        {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                      </button>
-                    </div>
-                  </div>
-                  <div className="space-y-2">
-                    <Label className="text-white">New Password</Label>
-                    <Input
-                      type="password"
-                      placeholder="••••••••"
-                      className="bg-luxury-lighter border-gold/20 focus:border-gold text-white"
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label className="text-white">Confirm New Password</Label>
-                    <Input
-                      type="password"
-                      placeholder="••••••••"
-                      className="bg-luxury-lighter border-gold/20 focus:border-gold text-white"
-                    />
-                  </div>
-                  <GoldButton size="sm">Update Password</GoldButton>
-                </div>
-              </GlowCard>
-
-              {/* Two-Factor Auth */}
-              <GlowCard variant="default" className="p-5">
-                <div className="flex items-start justify-between">
-                  <div className="flex items-start gap-4">
-                    <div className="w-10 h-10 rounded-lg bg-green-500/20 flex items-center justify-center">
-                      <Smartphone className="w-5 h-5 text-green-400" />
-                    </div>
-                    <div>
-                      <h3 className="text-base font-semibold text-white">Two-Factor Authentication</h3>
-                      <p className="text-sm text-luxury-gray mt-1">
-                        Add an extra layer of security to your account
-                      </p>
-                    </div>
-                  </div>
-                  <Switch />
-                </div>
-              </GlowCard>
-
-              {/* Sessions */}
-              <GlowCard variant="default" className="p-5">
-                <h3 className="text-lg font-semibold text-white mb-4">Active Sessions</h3>
-                <div className="space-y-3">
-                  {[
-                    { device: "MacBook Pro - Chrome", location: "Los Angeles, CA", current: true },
-                    { device: "iPhone 14 - Safari", location: "Los Angeles, CA", current: false },
-                  ].map((session, index) => (
-                    <div
-                      key={index}
-                      className="flex items-center justify-between p-3 bg-luxury-lighter/50 rounded-lg"
-                    >
-                      <div>
-                        <div className="text-sm font-medium text-white">{session.device}</div>
-                        <div className="text-xs text-luxury-gray">{session.location}</div>
-                      </div>
-                      {session.current ? (
-                        <span className="px-2 py-0.5 text-xs bg-green-500/20 text-green-400 rounded">
-                          Current
-                        </span>
-                      ) : (
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          className="text-red-400 hover:text-red-300 hover:bg-red-400/10"
-                        >
-                          Revoke
-                        </Button>
-                      )}
-                    </div>
-                  ))}
-                </div>
-              </GlowCard>
-
-              {/* Danger Zone */}
-              <GlowCard variant="default" className="p-5 border-red-500/20">
-                <h3 className="text-lg font-semibold text-red-400 mb-2">Danger Zone</h3>
-                <p className="text-sm text-luxury-gray mb-4">
-                  Once you delete your account, there is no going back. Please be certain.
-                </p>
-                <Button
-                  variant="outline"
-                  className="border-red-500/50 text-red-400 hover:bg-red-400/10"
-                >
-                  <Trash2 className="w-4 h-4 mr-2" />
-                  Delete Account
-                </Button>
-              </GlowCard>
-            </motion.div>
-          )}
-
-          {/* Notifications Section */}
-          {activeSection === "notifications" && (
-            <motion.div
-              initial={{ opacity: 0, y: 10 }}
-              animate={{ opacity: 1, y: 0 }}
-              className="space-y-6"
-            >
-              <GlowCard variant="default" className="p-5">
-                <h3 className="text-lg font-semibold text-white mb-4">Email Notifications</h3>
-                <div className="space-y-4">
-                  {[
-                    { label: "Campaign Updates", description: "Progress and status changes", enabled: true },
-                    { label: "Payment Receipts", description: "Confirmations and invoices", enabled: true },
-                    { label: "Milestone Alerts", description: "When you reach streaming goals", enabled: true },
-                    { label: "Weekly Summary", description: "Weekly performance report", enabled: false },
-                    { label: "Marketing Emails", description: "Promotions and offers", enabled: false },
-                  ].map((item, index) => (
-                    <div key={index} className="flex items-center justify-between py-3 border-b border-gold/5 last:border-0">
-                      <div>
-                        <div className="text-white font-medium">{item.label}</div>
-                        <div className="text-sm text-luxury-gray">{item.description}</div>
-                      </div>
-                      <Switch defaultChecked={item.enabled} />
-                    </div>
-                  ))}
-                </div>
-              </GlowCard>
-
-              <GlowCard variant="default" className="p-5">
-                <h3 className="text-lg font-semibold text-white mb-4">Push Notifications</h3>
-                <div className="space-y-4">
-                  {[
-                    { label: "Campaign Alerts", description: "Real-time campaign updates", enabled: true },
-                    { label: "New Messages", description: "Support and system messages", enabled: true },
-                    { label: "Referral Bonuses", description: "When you earn rewards", enabled: true },
-                  ].map((item, index) => (
-                    <div key={index} className="flex items-center justify-between py-3 border-b border-gold/5 last:border-0">
-                      <div>
-                        <div className="text-white font-medium">{item.label}</div>
-                        <div className="text-sm text-luxury-gray">{item.description}</div>
-                      </div>
-                      <Switch defaultChecked={item.enabled} />
-                    </div>
-                  ))}
+                  <p className="text-xs text-luxury-gray mt-2">
+                    Earn rewards for every user you refer to PlugToPlaylist!
+                  </p>
                 </div>
               </GlowCard>
             </motion.div>
@@ -373,52 +251,22 @@ export default function UserSettingsPage() {
             <motion.div
               initial={{ opacity: 0, y: 10 }}
               animate={{ opacity: 1, y: 0 }}
-              className="space-y-6"
+              className="space-y-6 text-left"
             >
-              {/* Current Plan */}
+              {/* Wallet Card */}
               <GlowCard variant="premium" className="p-5">
                 <div className="flex items-start justify-between">
                   <div>
-                    <h3 className="text-lg font-semibold text-white mb-1">Current Plan</h3>
-                    <p className="text-luxury-gray text-sm">Your active subscription</p>
+                    <h3 className="text-lg font-semibold text-white mb-1">Wallet Balance</h3>
+                    <p className="text-luxury-gray text-sm">Credits available for promotion</p>
                   </div>
-                  <span className="px-3 py-1 bg-gold/20 text-gold rounded-lg text-sm font-medium">
-                    Free Plan
-                  </span>
-                </div>
-                <div className="mt-4 pt-4 border-t border-gold/10">
-                  <div className="flex items-center justify-between">
-                    <span className="text-luxury-gray">Total spent</span>
-                    <span className="text-gold font-semibold">$747.00</span>
+                  <div className="text-3xl font-bold text-gold">
+                    ${profileData.walletBalance.toFixed(2)}
                   </div>
                 </div>
-              </GlowCard>
-
-              {/* Payment Methods */}
-              <GlowCard variant="default" className="p-5">
-                <div className="flex items-center justify-between mb-4">
-                  <h3 className="text-lg font-semibold text-white">Payment Methods</h3>
-                  <GoldButton variant="outline" size="sm">
-                    Add New
-                  </GoldButton>
-                </div>
-                <div className="space-y-3">
-                  <div className="flex items-center justify-between p-3 bg-luxury-lighter/50 rounded-lg">
-                    <div className="flex items-center gap-3">
-                      <div className="w-10 h-6 bg-gradient-to-r from-blue-600 to-blue-400 rounded flex items-center justify-center text-white text-xs font-bold">
-                        VISA
-                      </div>
-                      <div>
-                        <div className="text-white text-sm">•••• •••• •••• 4242</div>
-                        <div className="text-xs text-luxury-gray">Expires 12/26</div>
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <span className="px-2 py-0.5 text-xs bg-green-500/20 text-green-400 rounded">
-                        Default
-                      </span>
-                    </div>
-                  </div>
+                <div className="mt-6 flex gap-3">
+                  <GoldButton size="sm">Add Funds</GoldButton>
+                  <GoldButton variant="outline" size="sm">Redeem Coupon</GoldButton>
                 </div>
               </GlowCard>
 
@@ -426,10 +274,6 @@ export default function UserSettingsPage() {
               <GlowCard variant="default" className="p-5">
                 <div className="flex items-center justify-between mb-4">
                   <h3 className="text-lg font-semibold text-white">Billing History</h3>
-                  <Button variant="ghost" size="sm" className="text-luxury-gray hover:text-white">
-                    <Download className="w-4 h-4 mr-2" />
-                    Export
-                  </Button>
                 </div>
                 <div className="overflow-x-auto">
                   <table className="w-full">
@@ -442,27 +286,48 @@ export default function UserSettingsPage() {
                       </tr>
                     </thead>
                     <tbody>
-                      {[
-                        { date: "Jan 21, 2024", desc: "Premium Plan", amount: "$149.00", status: "paid" },
-                        { date: "Jan 18, 2024", desc: "Starter Plan", amount: "$49.00", status: "paid" },
-                        { date: "Jan 10, 2024", desc: "Professional Plan", amount: "$349.00", status: "paid" },
-                      ].map((item, index) => (
-                        <tr key={index} className="border-b border-gold/5">
-                          <td className="py-3 text-sm text-luxury-gray">{item.date}</td>
-                          <td className="py-3 text-sm text-white">{item.desc}</td>
-                          <td className="py-3 text-sm text-gold font-medium">{item.amount}</td>
-                          <td className="py-3 text-right">
-                            <span className="px-2 py-0.5 text-xs bg-green-500/20 text-green-400 rounded">
-                              Paid
-                            </span>
+                      {payments.length === 0 ? (
+                        <tr>
+                          <td colSpan={4} className="py-8 text-center text-luxury-gray text-sm">
+                            No billing history found.
                           </td>
                         </tr>
-                      ))}
+                      ) : (
+                        payments.map((payment) => (
+                          <tr key={payment.id} className="border-b border-gold/5">
+                            <td className="py-3 text-sm text-luxury-gray">
+                              {new Date(payment.createdAt).toLocaleDateString()}
+                            </td>
+                            <td className="py-3 text-sm text-white">
+                              {payment.submission?.plan?.name || "Service Payment"}
+                              {payment.submission?.title && ` - ${payment.submission.title}`}
+                            </td>
+                            <td className="py-3 text-sm text-gold font-medium">
+                              ${payment.amount.toFixed(2)}
+                            </td>
+                            <td className="py-3 text-right">
+                              <span className={cn(
+                                "px-2 py-0.5 text-xs rounded",
+                                payment.status === "completed" ? "bg-green-500/20 text-green-400" : "bg-brand-orange/20 text-brand-orange"
+                              )}>
+                                {payment.status.charAt(0).toUpperCase() + payment.status.slice(1)}
+                              </span>
+                            </td>
+                          </tr>
+                        ))
+                      )}
                     </tbody>
                   </table>
                 </div>
               </GlowCard>
             </motion.div>
+          )}
+
+          {/* Simple notifications / security placeholders */}
+          {(activeSection === "notifications" || activeSection === "security") && (
+            <div className="py-20 text-center text-luxury-gray bg-luxury-dark rounded-xl border border-gold/10">
+              This feature is coming soon in the next update.
+            </div>
           )}
         </div>
       </div>

@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createAdminClient } from "@/lib/supabase/client";
+import { createServerClient } from "@/lib/supabase/client";
 import { sendPaymentConfirmationEmail, sendNewPaymentAdminNotification } from "@/lib/email";
 import Stripe from "stripe";
 
@@ -9,7 +9,7 @@ const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!);
 const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET!;
 
 export async function POST(request: NextRequest) {
-  const adminClient = createAdminClient();
+  const adminClient = createServerClient();
   const signature = request.headers.get("stripe-signature");
   const body = await request.text();
 
@@ -18,86 +18,72 @@ export async function POST(request: NextRequest) {
   try {
     event = stripe.webhooks.constructEvent(body, signature!, webhookSecret);
   } catch (err: any) {
+    console.error("Webhook signature verification failed:", err.message);
     return NextResponse.json({ error: `Webhook Error: ${err.message}` }, { status: 400 });
   }
+
+  console.log(`Processing Stripe event: ${event.type}`);
 
   if (event.type === "checkout.session.completed") {
     const session = event.data.object as Stripe.Checkout.Session;
     const { submissionId } = session.metadata!;
 
+    if (!submissionId) {
+        console.error("No submissionId in session metadata");
+        return NextResponse.json({ error: "No submissionId" }, { status: 400 });
+    }
+
     try {
-      // Find the payment associated with the submission - Try singular first
-      let { data: payment, error: paymentError } = await adminClient
-        .from("Payment")
-        .select(`
-          *,
-          submission:submissionId (*)
-        `)
-        .eq("submissionId", submissionId)
-        .single();
-
-      if (paymentError) {
-        const { data: altPayment, error: altError } = await adminClient.from("payments").select("*, submission:submissionId(*)").eq("submissionId", submissionId).single();
-        if (!altError) payment = altPayment;
-        else return NextResponse.json({ error: "Payment not found" }, { status: 404 });
-      }
-
-      // Update payment and submission status
-      let { data: updatedPayment, error: updatePaymentError } = await adminClient
-        .from("Payment")
+      // 1. Update Payment Record (SnakeCase Sync)
+      // Use submission_id to find the payment record
+      const { data: payment, error: paymentError } = await (adminClient
+        .from("payments") // Use plural
         .update({
           status: "completed",
-          paidAt: new Date().toISOString(),
-          providerRef: session.payment_intent as string,
-        })
-        .eq("id", payment.id)
-        .select()
-        .single();
-      
-      if (updatePaymentError) {
-          const { data: altUpdate, error: altUpdateError } = await adminClient
-            .from("payments")
-            .update({ status: "completed", paidAt: new Date().toISOString(), providerRef: session.payment_intent as string })
-            .eq("id", payment.id)
-            .select()
-            .single();
-          if (altUpdateError) throw updatePaymentError;
-          updatedPayment = altUpdate;
+          paid_at: new Date().toISOString(),
+          gateway_reference: session.payment_intent as string,
+          metadata: { 
+            ...(session.metadata || {}),
+            stripe_session_id: session.id 
+          }
+        } as any)
+        .eq("submission_id", submissionId)
+        .select(`*, submission:submissions(track_title, user_id)`)
+        .single() as any);
+
+      if (paymentError) {
+        console.error("Payment update error:", paymentError);
+        // Fallback or retry logic can go here
+        return NextResponse.json({ error: "Payment record update failed" }, { status: 500 });
       }
 
-      const { error: updateSubmissionError } = await adminClient
-        .from("Submission")
+      // 2. Update Submission Status (SnakeCase Sync)
+      // Transition from 'pending' to 'under_review' upon payment
+      const { error: subError } = await (adminClient
+        .from("submissions")
         .update({
-          paymentStatus: "paid",
-        })
-        .eq("id", payment.submissionId);
+          status: "under_review" // Using valid SubmissionStatus enum
+        } as any)
+        .eq("id", submissionId) as any);
 
-      if (updateSubmissionError) {
-          await adminClient.from("submissions").update({ paymentStatus: "paid" }).eq("id", payment.submissionId);
+      if (subError) {
+        console.error("Submission status update error:", subError);
       }
 
-      // Send notification emails
-      let userEmail = payment.submission?.guestEmail;
-      if (payment.userId) {
-        let { data: userData } = await adminClient.from("User").select("email").eq("id", payment.userId).single();
-        if (!userData) {
-            const { data: altUser } = await adminClient.from("users").select("email").eq("id", payment.userId).single();
-            userData = altUser;
-        }
-        if (userData) userEmail = userData.email;
-      }
-
+      // 3. Communications
+      const userEmail = session.customer_details?.email;
       if (userEmail) {
-        await sendPaymentConfirmationEmail(userEmail, updatedPayment.amount, updatedPayment.currency);
+        await sendPaymentConfirmationEmail(userEmail, (payment as any).amount, (payment as any).currency);
       }
-      await sendNewPaymentAdminNotification(updatedPayment.id, updatedPayment.amount, updatedPayment.currency);
+      
+      await sendNewPaymentAdminNotification((payment as any).id, (payment as any).amount, (payment as any).currency);
 
-      return NextResponse.json({ status: "success" });
+      return NextResponse.json({ status: "success", paymentId: (payment as any).id });
     } catch (error) {
-      console.error("Error processing Stripe webhook:", error);
-      return NextResponse.json({ error: "Failed to process webhook" }, { status: 500 });
+      console.error("Error processing Stripe webhook success:", error);
+      return NextResponse.json({ error: "Internal processing failure" }, { status: 500 });
     }
   }
 
   return NextResponse.json({ status: "ignored" });
-}
+}

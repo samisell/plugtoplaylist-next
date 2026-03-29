@@ -1,48 +1,47 @@
 import { NextResponse } from "next/server";
-import { supabase } from "@/lib/supabase/client";
+import { createServerClient } from "@/lib/supabase/client";
 
 export const dynamic = "force-dynamic";
 
 export async function GET() {
   try {
-    // Try Prisma style singular first
-    const { data: plans, error } = await supabase
-      .from("Plan")
+    // USE THE ADMIN CLIENT (createServerClient) to bypass RLS recursion issues
+    // This uses the service_role key which ignores database policies
+    const adminSupabase = createServerClient();
+    
+    // Primary plural 'plans' - confirmed by Postgres hint
+    let { data: plans, error } = await adminSupabase
+      .from("plans")
       .select("*")
-      .eq("isActive", true)
       .order("price", { ascending: true });
 
     if (error) {
-      // If table 'Plan' doesn't exist, try 'plans'
-      if (error.code === 'PGRST204' || error.code === 'PGRST205') {
-         const { data: altPlans, error: altError } = await supabase
-           .from("plans")
-           .select("*")
-           .eq("isActive", true)
-           .order("price", { ascending: true });
-         
-         if (!altError && altPlans && altPlans.length > 0) return NextResponse.json({ plans: altPlans });
-      }
-      throw error;
+       // Fallback singular 'Plan'
+       const { data: altPlans, error: altError } = await adminSupabase
+        .from("Plan")
+        .select("*")
+        .order("price", { ascending: true });
+      
+       if (!altError) plans = altPlans;
+       else throw error; // throw original if both fail
     }
 
-    // If no plans exist, seed default plans
+    // Attempt seeding if empty
     if (!plans || plans.length === 0) {
-      const defaultPlans = await seedDefaultPlans();
-      return NextResponse.json({ plans: defaultPlans });
+      plans = await seedDefaultPlans(adminSupabase);
     }
 
-    return NextResponse.json({ plans });
+    return NextResponse.json({ plans: plans || [] });
   } catch (error) {
     console.error("Error fetching plans:", error);
     return NextResponse.json(
-      { error: "Failed to fetch plans" },
+      { error: "Failed to fetch plans", details: error instanceof Error ? error.message : String(error) },
       { status: 500 }
     );
   }
 }
 
-async function seedDefaultPlans() {
+async function seedDefaultPlans(supabase: any) {
   const plans = [
     {
       name: "Starter",
@@ -60,6 +59,7 @@ async function seedDefaultPlans() {
       socialPromotion: false,
       emailMarketing: false,
       priority: "normal",
+      isActive: true
     },
     {
       name: "Premium",
@@ -79,6 +79,7 @@ async function seedDefaultPlans() {
       socialPromotion: true,
       emailMarketing: true,
       priority: "high",
+      isActive: true
     },
     {
       name: "Professional",
@@ -99,18 +100,20 @@ async function seedDefaultPlans() {
       socialPromotion: true,
       emailMarketing: true,
       priority: "premium",
+      isActive: true
     },
   ];
 
+  // Primary plural 'plans'
   const { data: createdPlans, error } = await supabase
-    .from("Plan")
+    .from("plans")
     .insert(plans)
     .select();
 
   if (error) {
-     const { data, error: secondError } = await supabase.from("plans").insert(plans).select();
-     if (!secondError) return data;
-     throw error;
+     const { data: altCreated, error: altError } = await supabase.from("Plan").insert(plans).select();
+     if (altError) throw altError;
+     return altCreated;
   }
 
   return createdPlans;

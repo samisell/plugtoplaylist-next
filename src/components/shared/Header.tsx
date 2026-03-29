@@ -35,7 +35,13 @@ export function Header() {
         <div className="flex items-center justify-between h-16 md:h-20">
           {/* Logo */}
           <Link href="/" className="flex items-center gap-2 group">
-            <Image src="/PTP-mini.png" alt="PlugToPlaylist Logo" width={40} height={40} />
+            <Image 
+              src="/PTP-mini.png" 
+              alt="PlugToPlaylist Logo" 
+              width={40} 
+              height={40} 
+              style={{ height: "auto" }}
+            />
             <span className="text-xl font-bold text-white group-hover:text-gold transition-colors">
               PlugTo<span className="text-gold">Playlist</span>
             </span>
@@ -129,7 +135,13 @@ export function DashboardHeader() {
         <div className="flex items-center justify-between h-16">
           {/* Logo */}
           <Link href="/" className="flex items-center gap-2 group">
-            <Image src="/PTP-mini.png" alt="PlugToPlaylist Logo" width={32} height={32} />
+            <Image 
+              src="/PTP-mini.png" 
+              alt="PlugToPlaylist Logo" 
+              width={32} 
+              height={32} 
+              style={{ height: "auto" }}
+            />
             <span className="text-lg font-bold text-white">
               PlugTo<span className="text-gold">Playlist</span>
             </span>

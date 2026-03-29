@@ -2,6 +2,8 @@
 
 import { motion } from "framer-motion";
 import Link from "next/link";
+import { usePathname } from "next/navigation";
+import { useEffect, useState } from "react";
 import {
   Music,
   TrendingUp,
@@ -14,6 +16,7 @@ import {
   HelpCircle,
   User,
   BarChart3,
+  Loader2,
 } from "lucide-react";
 import { DashboardHeader, GoldButton, StatusBadge, GlowCard, GlowCardContent, GlowCardHeader, GlowCardTitle } from "@/components/shared";
 import { DashboardFooter } from "@/components/shared/Footer";
@@ -21,81 +24,78 @@ import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import { cn } from "@/lib/utils";
 
-// Mock data for dashboard
-const stats = [
-  {
-    title: "Total Submissions",
-    value: "12",
-    change: "+3 this month",
-    icon: Music,
-    color: "gold",
-  },
-  {
-    title: "Active Campaigns",
-    value: "3",
-    change: "2 pending review",
-    icon: TrendingUp,
-    color: "orange",
-  },
-  {
-    title: "Total Streams",
-    value: "125.4K",
-    change: "+45% avg growth",
-    icon: BarChart3,
-    color: "gold",
-  },
-  {
-    title: "Total Spent",
-    value: "$747",
-    change: "$149 saved with plans",
-    icon: DollarSign,
-    color: "orange",
-  },
-];
-
-const recentSubmissions = [
-  {
-    id: "1",
-    title: "Blinding Lights",
-    artist: "The Weeknd",
-    cover: "https://images.unsplash.com/photo-1614613535308-eb5fbd3d2c17?w=100&h=100&fit=crop",
-    status: "active" as const,
-    plan: "Premium",
-    submittedAt: "2024-01-15",
-    streams: "45.2K",
-  },
-  {
-    id: "2",
-    title: "Shape of You",
-    artist: "Ed Sheeran",
-    cover: "https://images.unsplash.com/photo-1493225457124-a3eb161ffa5f?w=100&h=100&fit=crop",
-    status: "pending" as const,
-    plan: "Starter",
-    submittedAt: "2024-01-18",
-    streams: "-",
-  },
-  {
-    id: "3",
-    title: "Levitating",
-    artist: "Dua Lipa",
-    cover: "https://images.unsplash.com/photo-1470225620780-dba8ba36b745?w=100&h=100&fit=crop",
-    status: "completed" as const,
-    plan: "Professional",
-    submittedAt: "2024-01-10",
-    streams: "80.2K",
-  },
-];
-
 const sidebarItems = [
-  { name: "Dashboard", href: "/#dashboard", icon: BarChart3, active: true },
-  { name: "My Submissions", href: "/#submissions", icon: Music },
-  { name: "Analytics", href: "/#analytics", icon: TrendingUp },
-  { name: "Notifications", href: "/#notifications", icon: Bell, badge: "3" },
-  { name: "Settings", href: "/#settings", icon: Settings },
-  { name: "Help & Support", href: "/#help", icon: HelpCircle },
+  { name: "Overview", href: "/dashboard", icon: BarChart3 },
+  { name: "My Submissions", href: "/dashboard/submissions", icon: Music },
+  { name: "Analytics", href: "/dashboard/analytics", icon: TrendingUp },
+  { name: "Notifications", href: "/dashboard/notifications", icon: Bell, badge: "0" },
+  { name: "Settings", href: "/dashboard/settings", icon: Settings },
+  { name: "Help & Support", href: "/dashboard/help", icon: HelpCircle },
 ];
 
 export function UserDashboard() {
+  const pathname = usePathname();
+  const [userData, setUserData] = useState<any>(null);
+  const [submissions, setSubmissions] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [stats, setStats] = useState([
+    { title: "Total Submissions", value: "0", icon: Music, color: "gold" },
+    { title: "Active Campaigns", value: "0", icon: TrendingUp, color: "orange" },
+    { title: "Total Streams", value: "0", icon: BarChart3, color: "gold" },
+    { title: "Wallet Balance", value: "$0", icon: DollarSign, color: "orange" },
+  ]);
+
+  useEffect(() => {
+    async function fetchData() {
+      try {
+        setLoading(true);
+        // 1. Get user data from local storage or session
+        const storedUser = localStorage.getItem("user");
+        if (!storedUser) {
+          // In a real app, redirect to login if no session
+          setLoading(false);
+          return;
+        }
+        const user = JSON.parse(storedUser);
+        
+        // 2. Fetch full user profile
+        const userRes = await fetch(`/api/auth?userId=${user.id}`);
+        const { user: profile } = await userRes.json();
+        setUserData(profile);
+
+        // 3. Fetch submissions
+        const subRes = await fetch(`/api/submissions?userId=${user.id}`);
+        const { submissions: subs } = await subRes.json();
+        setSubmissions(subs || []);
+
+        // 4. Update Stats
+        const activeCount = (subs || []).filter((s: any) => s.status === "active" || s.status === "in_progress").length;
+        
+        setStats([
+          { title: "Total Submissions", value: (subs || []).length.toString(), icon: Music, color: "gold" },
+          { title: "Active Campaigns", value: activeCount.toString(), icon: TrendingUp, color: "orange" },
+          { title: "Total Streams", value: "0", icon: BarChart3, color: "gold" }, // Placeholder for now
+          { title: "Wallet Balance", value: `$${profile?.walletBalance || 0}`, icon: DollarSign, color: "orange" },
+        ]);
+
+      } catch (error) {
+        console.error("Failed to fetch dashboard data:", error);
+      } finally {
+        setLoading(false);
+      }
+    }
+
+    fetchData();
+  }, []);
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-luxury-black flex items-center justify-center">
+        <Loader2 className="w-12 h-12 text-gold animate-spin" />
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-luxury-black flex flex-col">
       <DashboardHeader />
@@ -110,14 +110,14 @@ export function UserDashboard() {
                 href={item.href}
                 className={cn(
                   "flex items-center gap-3 px-4 py-3 rounded-lg transition-all",
-                  item.active
+                  pathname === item.href
                     ? "bg-gold/10 text-gold border-l-2 border-gold"
                     : "text-luxury-gray hover:text-white hover:bg-luxury-lighter"
                 )}
               >
                 <item.icon className="w-5 h-5" />
                 <span className="font-medium">{item.name}</span>
-                {item.badge && (
+                {item.badge !== "0" && item.badge && (
                   <span className="ml-auto bg-brand-orange text-white text-xs px-2 py-0.5 rounded-full">
                     {item.badge}
                   </span>
@@ -126,9 +126,8 @@ export function UserDashboard() {
             ))}
           </div>
 
-          {/* Quick Actions */}
           <div className="p-4 border-t border-gold/10 mt-4">
-            <Link href="/#submit">
+            <Link href="/dashboard/submissions/new">
               <GoldButton className="w-full">
                 New Submission
               </GoldButton>
@@ -139,10 +138,9 @@ export function UserDashboard() {
         {/* Main Content */}
         <main className="flex-1 lg:ml-64 p-6 md:p-8">
           <div className="max-w-7xl mx-auto">
-            {/* Welcome Header */}
             <div className="mb-8">
               <h1 className="text-2xl md:text-3xl font-bold text-white mb-2">
-                Welcome back, <span className="text-gold">Alex</span>
+                Welcome back, <span className="text-gold">{userData?.name || "Member"}</span>
               </h1>
               <p className="text-luxury-gray">
                 Here&apos;s an overview of your music promotion journey.
@@ -174,7 +172,6 @@ export function UserDashboard() {
                       {stat.value}
                     </div>
                     <div className="text-sm text-luxury-gray">{stat.title}</div>
-                    <div className="text-xs text-green-400 mt-2">{stat.change}</div>
                   </GlowCard>
                 </motion.div>
               ))}
@@ -184,7 +181,7 @@ export function UserDashboard() {
             <div className="mb-8">
               <div className="flex items-center justify-between mb-4">
                 <h2 className="text-xl font-semibold text-white">Recent Submissions</h2>
-                <Link href="/#submissions" className="text-sm text-gold hover:text-brand-orange flex items-center gap-1">
+                <Link href="/dashboard/submissions" className="text-sm text-gold hover:text-brand-orange flex items-center gap-1">
                   View all <ChevronRight className="w-4 h-4" />
                 </Link>
               </div>
@@ -197,51 +194,67 @@ export function UserDashboard() {
                         <th className="text-left py-4 px-6 text-sm font-medium text-luxury-gray">Track</th>
                         <th className="text-left py-4 px-6 text-sm font-medium text-luxury-gray">Plan</th>
                         <th className="text-left py-4 px-6 text-sm font-medium text-luxury-gray">Status</th>
-                        <th className="text-left py-4 px-6 text-sm font-medium text-luxury-gray">Streams</th>
                         <th className="text-left py-4 px-6 text-sm font-medium text-luxury-gray">Submitted</th>
                         <th className="text-right py-4 px-6 text-sm font-medium text-luxury-gray">Action</th>
                       </tr>
                     </thead>
                     <tbody>
-                      {recentSubmissions.map((submission) => (
-                        <tr key={submission.id} className="border-b border-gold/5 hover:bg-luxury-lighter/30 transition-colors">
-                          <td className="py-4 px-6">
-                            <div className="flex items-center gap-3">
-                              <img
-                                src={submission.cover}
-                                alt={submission.title}
-                                className="w-12 h-12 rounded-lg object-cover"
-                              />
-                              <div>
-                                <div className="font-medium text-white">{submission.title}</div>
-                                <div className="text-sm text-luxury-gray">{submission.artist}</div>
-                              </div>
-                            </div>
-                          </td>
-                          <td className="py-4 px-6">
-                            <span className="text-white">{submission.plan}</span>
-                          </td>
-                          <td className="py-4 px-6">
-                            <StatusBadge status={submission.status}>
-                              {submission.status.charAt(0).toUpperCase() + submission.status.slice(1)}
-                            </StatusBadge>
-                          </td>
-                          <td className="py-4 px-6 text-white">{submission.streams}</td>
-                          <td className="py-4 px-6 text-luxury-gray">{submission.submittedAt}</td>
-                          <td className="py-4 px-6 text-right">
-                            <Button variant="ghost" size="sm" className="text-gold hover:text-brand-orange">
-                              <ExternalLink className="w-4 h-4" />
-                            </Button>
+                      {submissions.length === 0 ? (
+                        <tr>
+                          <td colSpan={5} className="py-8 px-6 text-center text-luxury-gray">
+                            No submissions found. Start by submitting your first track!
                           </td>
                         </tr>
-                      ))}
+                      ) : (
+                        submissions.slice(0, 5).map((submission) => (
+                          <tr key={submission.id} className="border-b border-gold/5 hover:bg-luxury-lighter/30 transition-colors">
+                            <td className="py-4 px-6">
+                              <div className="flex items-center gap-3">
+                                {submission.coverImage ? (
+                                  <img
+                                    src={submission.coverImage}
+                                    alt={submission.title}
+                                    className="w-12 h-12 rounded-lg object-cover"
+                                  />
+                                ) : (
+                                  <div className="w-12 h-12 rounded-lg bg-luxury-gray/20 flex items-center justify-center">
+                                    <Music className="w-6 h-6 text-gold" />
+                                  </div>
+                                )}
+                                <div>
+                                  <div className="font-medium text-white">{submission.title}</div>
+                                  <div className="text-sm text-luxury-gray">{submission.artist}</div>
+                                </div>
+                              </div>
+                            </td>
+                            <td className="py-4 px-6">
+                              <span className="text-white">{submission.plan?.name || "Generic"}</span>
+                            </td>
+                            <td className="py-4 px-6">
+                              <StatusBadge status={submission.status.toLowerCase()}>
+                                {submission.status.charAt(0).toUpperCase() + submission.status.slice(1)}
+                              </StatusBadge>
+                            </td>
+                            <td className="py-4 px-6 text-luxury-gray">
+                              {new Date(submission.createdAt).toLocaleDateString()}
+                            </td>
+                            <td className="py-4 px-6 text-right">
+                              <Link href={`/dashboard/submissions/${submission.id}`}>
+                                <Button variant="ghost" size="sm" className="text-gold hover:text-brand-orange">
+                                  <ExternalLink className="w-4 h-4" />
+                                </Button>
+                              </Link>
+                            </td>
+                          </tr>
+                        ))
+                      )}
                     </tbody>
                   </table>
                 </div>
               </GlowCard>
             </div>
 
-            {/* Active Campaign Progress */}
+            {/* Campaign Progress & Quick Actions */}
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
               <GlowCard variant="premium" className="p-6">
                 <GlowCardHeader className="pb-4">
@@ -252,22 +265,19 @@ export function UserDashboard() {
                 </GlowCardHeader>
                 <GlowCardContent>
                   <div className="space-y-4">
-                    <div>
-                      <div className="flex justify-between mb-2">
-                        <span className="text-sm text-white">Blinding Lights</span>
-                        <span className="text-sm text-gold">65%</span>
-                      </div>
-                      <Progress value={65} className="h-2 bg-luxury-lighter [&>div]:bg-gold" />
-                      <div className="text-xs text-luxury-gray mt-1">18 days remaining</div>
-                    </div>
-                    <div>
-                      <div className="flex justify-between mb-2">
-                        <span className="text-sm text-white">Levitating</span>
-                        <span className="text-sm text-gold">30%</span>
-                      </div>
-                      <Progress value={30} className="h-2 bg-luxury-lighter [&>div]:bg-gold" />
-                      <div className="text-xs text-luxury-gray mt-1">42 days remaining</div>
-                    </div>
+                    {submissions.filter(s => s.status === 'active' || s.status === 'in_progress').length === 0 ? (
+                      <p className="text-sm text-luxury-gray">No active campaigns at the moment.</p>
+                    ) : (
+                      submissions.filter(s => s.status === 'active' || s.status === 'in_progress').slice(0, 3).map(sub => (
+                        <div key={sub.id}>
+                          <div className="flex justify-between mb-2">
+                            <span className="text-sm text-white">{sub.title}</span>
+                            <span className="text-sm text-gold">{sub.progress_percentage || 0}%</span>
+                          </div>
+                          <Progress value={sub.progress_percentage || 0} className="h-2 bg-luxury-lighter [&>div]:bg-gold" />
+                        </div>
+                      ))
+                    )}
                   </div>
                 </GlowCardContent>
               </GlowCard>
@@ -281,17 +291,17 @@ export function UserDashboard() {
                 </GlowCardHeader>
                 <GlowCardContent>
                   <div className="space-y-3">
-                    <Link href="/#submit" className="flex items-center gap-3 p-3 rounded-lg bg-luxury-lighter hover:bg-gold/10 transition-colors group">
+                    <Link href="/dashboard/submissions/new" className="flex items-center gap-3 p-3 rounded-lg bg-luxury-lighter hover:bg-gold/10 transition-colors group">
                       <Music className="w-5 h-5 text-gold" />
                       <span className="text-white group-hover:text-gold">Submit a new track</span>
                       <ChevronRight className="w-4 h-4 text-luxury-gray ml-auto" />
                     </Link>
-                    <Link href="/#settings" className="flex items-center gap-3 p-3 rounded-lg bg-luxury-lighter hover:bg-gold/10 transition-colors group">
+                    <Link href="/dashboard/settings" className="flex items-center gap-3 p-3 rounded-lg bg-luxury-lighter hover:bg-gold/10 transition-colors group">
                       <User className="w-5 h-5 text-gold" />
                       <span className="text-white group-hover:text-gold">Update profile</span>
                       <ChevronRight className="w-4 h-4 text-luxury-gray ml-auto" />
                     </Link>
-                    <Link href="/#help" className="flex items-center gap-3 p-3 rounded-lg bg-luxury-lighter hover:bg-gold/10 transition-colors group">
+                    <Link href="/dashboard/help" className="flex items-center gap-3 p-3 rounded-lg bg-luxury-lighter hover:bg-gold/10 transition-colors group">
                       <HelpCircle className="w-5 h-5 text-gold" />
                       <span className="text-white group-hover:text-gold">Get help</span>
                       <ChevronRight className="w-4 h-4 text-luxury-gray ml-auto" />
