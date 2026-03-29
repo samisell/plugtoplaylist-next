@@ -1,11 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
-import { db } from "@/lib/db";
+import { createAdminClient } from "@/lib/supabase/client";
 import { randomBytes } from "crypto";
 import { sendWelcomeEmail, sendNewUserAdminNotification } from "@/lib/email";
 
 // POST - Register or Login
 export async function POST(request: NextRequest) {
   try {
+    const adminClient = createAdminClient();
     const body = await request.json();
     const { action, email, password, name } = body;
 
@@ -18,9 +19,11 @@ export async function POST(request: NextRequest) {
 
     if (action === "register") {
       // Check if user exists
-      const existingUser = await db.user.findUnique({
-        where: { email },
-      });
+      const { data: existingUser } = await adminClient
+        .from("users")
+        .select("id")
+        .eq("email", email)
+        .single();
 
       if (existingUser) {
         return NextResponse.json(
@@ -33,14 +36,18 @@ export async function POST(request: NextRequest) {
       const referralCode = randomBytes(4).toString("hex").toUpperCase();
 
       // Create user
-      const user = await db.user.create({
-        data: {
+      const { data: user, error } = await adminClient
+        .from("users")
+        .insert({
           email,
           name: name || null,
           password, // In production, hash this!
           referralCode,
-        },
-      });
+        })
+        .select()
+        .single();
+
+      if (error) throw error;
 
       // Send notification emails
       await sendWelcomeEmail(user.email, user.name || 'New User');
@@ -58,11 +65,13 @@ export async function POST(request: NextRequest) {
 
     if (action === "login") {
       // Find user
-      const user = await db.user.findUnique({
-        where: { email },
-      });
+      const { data: user, error } = await adminClient
+        .from("users")
+        .select("*")
+        .eq("email", email)
+        .single();
 
-      if (!user || user.password !== password) {
+      if (error || !user || user.password !== password) {
         return NextResponse.json(
           { error: "Invalid credentials" },
           { status: 401 }
@@ -96,6 +105,7 @@ export async function POST(request: NextRequest) {
 // GET - Get current user
 export async function GET(request: NextRequest) {
   try {
+    const adminClient = createAdminClient();
     const { searchParams } = new URL(request.url);
     const userId = searchParams.get("userId");
 
@@ -106,22 +116,13 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    const user = await db.user.findUnique({
-      where: { id: userId },
-      select: {
-        id: true,
-        email: true,
-        name: true,
-        role: true,
-        avatar: true,
-        phone: true,
-        referralCode: true,
-        referralEarnings: true,
-        createdAt: true,
-      },
-    });
+    const { data: user, error } = await adminClient
+      .from("users")
+      .select("id, email, name, role, avatar, phone, referralCode, referralEarnings, createdAt")
+      .eq("id", userId)
+      .single();
 
-    if (!user) {
+    if (error || !user) {
       return NextResponse.json(
         { error: "User not found" },
         { status: 404 }

@@ -1,61 +1,58 @@
 import { NextRequest, NextResponse } from "next/server";
-import { db } from "@/lib/db";
+import { createAdminClient } from "@/lib/supabase/client";
 
 // GET - Admin dashboard stats
 export async function GET(request: NextRequest) {
   try {
+    const adminClient = createAdminClient();
+    
     // In production, add admin authentication check here
     
     // Get counts
     const [
-      totalUsers,
-      totalSubmissions,
-      pendingSubmissions,
-      activeSubmissions,
-      completedSubmissions,
-      totalPayments,
+      { count: totalUsers },
+      { count: totalSubmissions },
+      { count: pendingSubmissions },
+      { count: activeSubmissions },
+      { count: completedSubmissions },
+      { data: paidPayments },
     ] = await Promise.all([
-      db.user.count(),
-      db.submission.count(),
-      db.submission.count({ where: { status: "pending" } }),
-      db.submission.count({ where: { status: "active" } }),
-      db.submission.count({ where: { status: "completed" } }),
-      db.payment.aggregate({
-        where: { status: "paid" },
-        _sum: { amount: true },
-      }),
+      adminClient.from("users").select("*", { count: "exact", head: true }),
+      adminClient.from("submissions").select("*", { count: "exact", head: true }),
+      adminClient.from("submissions").select("*", { count: "exact", head: true }).eq("status", "pending"),
+      adminClient.from("submissions").select("*", { count: "exact", head: true }).eq("status", "active"),
+      adminClient.from("submissions").select("*", { count: "exact", head: true }).eq("status", "completed"),
+      adminClient.from("payments").select("amount").eq("status", "paid"),
     ]);
 
+    const totalRevenue = paidPayments?.reduce((sum, p) => sum + p.amount, 0) || 0;
+
     // Get recent submissions
-    const recentSubmissions = await db.submission.findMany({
-      take: 10,
-      orderBy: { createdAt: "desc" },
-      include: {
-        plan: true,
-        payment: true,
-      },
-    });
+    const { data: recentSubmissions } = await adminClient
+      .from("submissions")
+      .select(`
+        *,
+        plan:planId (*),
+        payment:id (*)
+      `)
+      .order("createdAt", { ascending: false })
+      .limit(10);
 
     // Get monthly revenue (last 6 months)
     const sixMonthsAgo = new Date();
     sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 6);
 
-    const payments = await db.payment.findMany({
-      where: {
-        status: "paid",
-        paidAt: { gte: sixMonthsAgo },
-      },
-      select: {
-        amount: true,
-        paidAt: true,
-      },
-    });
+    const { data: payments } = await adminClient
+      .from("payments")
+      .select("amount, paidAt")
+      .eq("status", "paid")
+      .gte("paidAt", sixMonthsAgo.toISOString());
 
     // Group by month
     const monthlyRevenue: Record<string, number> = {};
-    payments.forEach((payment) => {
+    payments?.forEach((payment) => {
       if (payment.paidAt) {
-        const month = payment.paidAt.toISOString().slice(0, 7);
+        const month = payment.paidAt.slice(0, 7);
         monthlyRevenue[month] = (monthlyRevenue[month] || 0) + payment.amount;
       }
     });
@@ -75,15 +72,15 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json({
       stats: {
-        totalUsers,
-        totalSubmissions,
-        pendingSubmissions,
-        activeSubmissions,
-        completedSubmissions,
-        totalRevenue: totalPayments._sum.amount || 0,
+        totalUsers: totalUsers || 0,
+        totalSubmissions: totalSubmissions || 0,
+        pendingSubmissions: pendingSubmissions || 0,
+        activeSubmissions: activeSubmissions || 0,
+        completedSubmissions: completedSubmissions || 0,
+        totalRevenue,
         revenueGrowth,
       },
-      recentSubmissions,
+      recentSubmissions: recentSubmissions || [],
       monthlyRevenue,
     });
   } catch (error) {

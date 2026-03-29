@@ -1,15 +1,18 @@
 import { NextResponse } from "next/server";
-import { db } from "@/lib/db";
+import { supabase, createAdminClient } from "@/lib/supabase/client";
 
 export async function GET() {
   try {
-    const plans = await db.plan.findMany({
-      where: { isActive: true },
-      orderBy: { price: "asc" },
-    });
+    const { data: plans, error } = await supabase
+      .from("plans")
+      .select("*")
+      .eq("isActive", true)
+      .order("price", { ascending: true });
+
+    if (error) throw error;
 
     // If no plans exist, seed default plans
-    if (plans.length === 0) {
+    if (!plans || plans.length === 0) {
       const defaultPlans = await seedDefaultPlans();
       return NextResponse.json({ plans: defaultPlans });
     }
@@ -25,6 +28,7 @@ export async function GET() {
 }
 
 async function seedDefaultPlans() {
+  const adminClient = createAdminClient();
   const plans = [
     {
       name: "Starter",
@@ -84,9 +88,12 @@ async function seedDefaultPlans() {
     },
   ];
 
-  const createdPlans = await Promise.all(
-    plans.map((plan) => db.plan.create({ data: plan }))
-  );
+  const { data: createdPlans, error } = await adminClient
+    .from("plans")
+    .insert(plans)
+    .select();
+
+  if (error) throw error;
 
   return createdPlans;
 }
