@@ -1,12 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createAdminClient } from "@/lib/supabase/client";
+import { supabase } from "@/lib/supabase/client";
 import { randomBytes } from "crypto";
 import { sendWelcomeEmail, sendNewUserAdminNotification } from "@/lib/email";
 
 // POST - Register or Login
 export async function POST(request: NextRequest) {
   try {
-    const adminClient = createAdminClient();
     const body = await request.json();
     const { action, email, password, name } = body;
 
@@ -19,11 +18,16 @@ export async function POST(request: NextRequest) {
 
     if (action === "register") {
       // Check if user exists
-      const { data: existingUser } = await adminClient
+      let { data: existingUser } = await supabase
         .from("users")
         .select("id")
         .eq("email", email)
         .single();
+      
+      if (!existingUser) {
+        const { data: altUser } = await supabase.from("User").select("id").eq("email", email).single();
+        if (altUser) existingUser = altUser;
+      }
 
       if (existingUser) {
         return NextResponse.json(
@@ -36,7 +40,7 @@ export async function POST(request: NextRequest) {
       const referralCode = randomBytes(4).toString("hex").toUpperCase();
 
       // Create user
-      const { data: user, error } = await adminClient
+      let { data: user, error } = await supabase
         .from("users")
         .insert({
           email,
@@ -47,11 +51,21 @@ export async function POST(request: NextRequest) {
         .select()
         .single();
 
-      if (error) throw error;
+      if (error) {
+         const { data: altUser, error: altError } = await supabase
+           .from("User")
+           .insert({ email, name: name || null, password, referralCode })
+           .select()
+           .single();
+         if (altError) throw error;
+         user = altUser;
+      }
 
       // Send notification emails
-      await sendWelcomeEmail(user.email, user.name || 'New User');
-      await sendNewUserAdminNotification(user.email);
+      if (user) {
+        await sendWelcomeEmail(user.email, user.name || 'New User');
+        await sendNewUserAdminNotification(user.email);
+      }
 
       return NextResponse.json({
         user: {
@@ -65,11 +79,19 @@ export async function POST(request: NextRequest) {
 
     if (action === "login") {
       // Find user
-      const { data: user, error } = await adminClient
+      let { data: user, error } = await supabase
         .from("users")
         .select("*")
         .eq("email", email)
         .single();
+      
+      if (error) {
+         const { data: altUser } = await supabase.from("User").select("*").eq("email", email).single();
+         if (altUser) {
+            user = altUser;
+            error = null;
+         }
+      }
 
       if (error || !user || user.password !== password) {
         return NextResponse.json(
@@ -105,7 +127,6 @@ export async function POST(request: NextRequest) {
 // GET - Get current user
 export async function GET(request: NextRequest) {
   try {
-    const adminClient = createAdminClient();
     const { searchParams } = new URL(request.url);
     const userId = searchParams.get("userId");
 
@@ -116,11 +137,23 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    const { data: user, error } = await adminClient
+    let { data: user, error } = await supabase
       .from("users")
       .select("id, email, name, role, avatar, phone, referralCode, referralEarnings, createdAt")
       .eq("id", userId)
       .single();
+    
+    if (error) {
+        const { data: altUser } = await supabase
+          .from("User")
+          .select("id, email, name, role, avatar, phone, referralCode, referralEarnings, createdAt")
+          .eq("id", userId)
+          .single();
+        if (altUser) {
+            user = altUser;
+            error = null;
+        }
+    }
 
     if (error || !user) {
       return NextResponse.json(

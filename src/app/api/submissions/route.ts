@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { supabase, createAdminClient } from "@/lib/supabase/client";
+import { supabase } from "@/lib/supabase/client";
 import { sendSubmissionConfirmationEmail, sendNewSubmissionAdminNotification } from "@/lib/email";
 import Stripe from "stripe";
 
@@ -29,9 +29,28 @@ export async function GET(request: NextRequest) {
       query = query.eq("status", status);
     }
 
-    const { data: submissions, error } = await query;
+    let { data: submissions, error } = await query;
 
-    if (error) throw error;
+    if (error && (error.code === 'PGRST204' || error.code === 'PGRST205')) {
+       // Try singular fallback
+       let altQuery = supabase
+        .from("Submission")
+        .select(`
+            *,
+            plan:planId (*),
+            payment:submissionId (amount, currency, status, provider)
+        `)
+        .order("createdAt", { ascending: false });
+       
+       if (userId) altQuery = altQuery.eq("userId", userId);
+       if (status) altQuery = altQuery.eq("status", status);
+       
+       const { data: altData, error: altError } = await altQuery;
+       if (!altError) submissions = altData;
+       else throw error;
+    } else if (error) {
+       throw error;
+    }
 
     return NextResponse.json({ submissions });
   } catch (error) {
@@ -46,7 +65,6 @@ export async function GET(request: NextRequest) {
 // POST - Create a new submission
 export async function POST(request: NextRequest) {
   try {
-    const adminClient = createAdminClient();
     const body = await request.json();
     const {
       userId,
@@ -72,7 +90,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Create submission
-    const { data: submission, error: submissionError } = await adminClient
+    let { data: submission, error: submissionError } = await supabase
       .from("submissions")
       .insert({
         userId: userId || null,
@@ -96,24 +114,53 @@ export async function POST(request: NextRequest) {
       `)
       .single();
 
-    if (submissionError) throw submissionError;
+    if (submissionError) {
+        // Try singular fallback
+        const { data: altData, error: altError } = await supabase
+          .from("Submission")
+          .insert({
+            userId: userId || null,
+            guestEmail: guestEmail || null,
+            guestName: guestName || null,
+            trackUrl,
+            trackType: trackType || "spotify",
+            trackId: trackId || null,
+            title,
+            artist,
+            album: album || null,
+            coverImage: coverImage || null,
+            duration: duration || null,
+            planId,
+            status: "pending",
+            paymentStatus: "pending",
+          })
+          .select(`
+            *,
+            plan:planId (*)
+          `)
+          .single();
+        
+        if (altError) throw submissionError;
+        submission = altData;
+    }
 
     // Get plan price for payment
-    const { data: plan, error: planError } = await adminClient
+    let { data: plan, error: planError } = await supabase
       .from("plans")
       .select("*")
       .eq("id", planId)
       .single();
 
-    if (planError || !plan) {
-      return NextResponse.json(
-        { error: "Plan not found" },
-        { status: 404 }
-      );
+    if (planError) {
+        const { data: altData } = await supabase.from("Plan").select("*").eq("id", planId).single();
+        if (altData) plan = altData;
+        else {
+            return NextResponse.json({ error: "Plan not found" }, { status: 404 });
+        }
     }
 
     // Create pending payment
-    const { error: paymentError } = await adminClient
+    const { error: paymentError } = await supabase
       .from("payments")
       .insert({
         userId: userId || null,
@@ -124,7 +171,16 @@ export async function POST(request: NextRequest) {
         provider: "stripe",
       });
 
-    if (paymentError) throw paymentError;
+    if (paymentError) {
+        await supabase.from("Payment").insert({
+            userId: userId || null,
+            submissionId: submission.id,
+            amount: plan.price,
+            currency: "USD",
+            status: "pending",
+            provider: "stripe",
+        });
+    }
 
     // Create a Stripe Checkout Session
     const session = await stripe.checkout.sessions.create({
@@ -153,12 +209,16 @@ export async function POST(request: NextRequest) {
     // Send notification emails
     let userEmail = guestEmail;
     if (userId) {
-      const { data: userData } = await adminClient
+      const { data: userData } = await supabase
         .from("users")
         .select("email")
         .eq("id", userId)
         .single();
       if (userData) userEmail = userData.email;
+      else {
+        const { data: altUserData } = await supabase.from("User").select("email").eq("id", userId).single();
+        if (altUserData) userEmail = altUserData.email;
+      }
     }
 
     if (userEmail) {
@@ -179,7 +239,6 @@ export async function POST(request: NextRequest) {
 // PATCH - Update submission status
 export async function PATCH(request: NextRequest) {
   try {
-    const adminClient = createAdminClient();
     const body = await request.json();
     const { id, status, paymentStatus } = body;
 
@@ -205,14 +264,24 @@ export async function PATCH(request: NextRequest) {
       updateData.paymentStatus = paymentStatus;
     }
 
-    const { data: submission, error } = await adminClient
+    let { data: submission, error } = await supabase
       .from("submissions")
       .update(updateData)
       .eq("id", id)
       .select()
       .single();
 
-    if (error) throw error;
+    if (error) {
+        const { data: altData, error: altError } = await supabase
+          .from("Submission")
+          .update(updateData)
+          .eq("id", id)
+          .select()
+          .single();
+        
+        if (altError) throw error;
+        submission = altData;
+    }
 
     return NextResponse.json({ submission });
   } catch (error) {

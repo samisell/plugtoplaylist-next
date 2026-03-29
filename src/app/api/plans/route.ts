@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { supabase, createAdminClient } from "@/lib/supabase/client";
+import { supabase } from "@/lib/supabase/client";
 
 export async function GET() {
   try {
@@ -9,7 +9,20 @@ export async function GET() {
       .eq("isActive", true)
       .order("price", { ascending: true });
 
-    if (error) throw error;
+    if (error) {
+      // If table 'plans' doesn't exist, try 'Plan' or 'plan'
+      if (error.code === 'PGRST204' || error.code === 'PGRST205') {
+         // Try singular
+         const { data: altPlans, error: altError } = await supabase
+           .from("Plan")
+           .select("*")
+           .eq("isActive", true)
+           .order("price", { ascending: true });
+         
+         if (!altError && altPlans && altPlans.length > 0) return NextResponse.json({ plans: altPlans });
+      }
+      throw error;
+    }
 
     // If no plans exist, seed default plans
     if (!plans || plans.length === 0) {
@@ -28,7 +41,6 @@ export async function GET() {
 }
 
 async function seedDefaultPlans() {
-  const adminClient = createAdminClient();
   const plans = [
     {
       name: "Starter",
@@ -88,12 +100,17 @@ async function seedDefaultPlans() {
     },
   ];
 
-  const { data: createdPlans, error } = await adminClient
+  const { data: createdPlans, error } = await supabase
     .from("plans")
     .insert(plans)
     .select();
 
-  if (error) throw error;
+  if (error) {
+     // Try secondary table name if primary fails
+     const { data, error: secondError } = await supabase.from("Plan").insert(plans).select();
+     if (!secondError) return data;
+     throw error;
+  }
 
   return createdPlans;
 }
