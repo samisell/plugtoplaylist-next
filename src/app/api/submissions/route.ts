@@ -3,6 +3,8 @@ import { supabase } from "@/lib/supabase/client";
 import { sendSubmissionConfirmationEmail, sendNewSubmissionAdminNotification } from "@/lib/email";
 import Stripe from "stripe";
 
+export const dynamic = "force-dynamic";
+
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!);
 
 // GET - List submissions

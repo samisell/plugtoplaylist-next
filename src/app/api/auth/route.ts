@@ -3,6 +3,8 @@ import { supabase } from "@/lib/supabase/client";
 import { randomBytes } from "crypto";
 import { sendWelcomeEmail, sendNewUserAdminNotification } from "@/lib/email";
 
+export const dynamic = "force-dynamic";
+
 // POST - Register or Login
 export async function POST(request: NextRequest) {
   try {
