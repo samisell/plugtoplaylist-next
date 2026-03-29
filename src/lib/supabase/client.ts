@@ -1,8 +1,8 @@
 import { createClient } from '@supabase/supabase-js';
 import type { Database } from './database.types';
 
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || "https://placeholder-url.supabase.co";
+const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || "placeholder-key";
 
 // Client-side Supabase client (uses anon key - limited permissions)
 export const supabase = createClient<Database>(supabaseUrl, supabaseAnonKey, {
@@ -15,9 +15,10 @@ export const supabase = createClient<Database>(supabaseUrl, supabaseAnonKey, {
 
 // Server-side Supabase client with service role (full permissions)
 export const createServerClient = () => {
-  const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
+    const url = process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL || "https://placeholder-url.supabase.co";
+    const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY || "placeholder-role-key";
   return createClient<Database>(
-    process.env.SUPABASE_URL!,
+    url,
     serviceRoleKey,
     {
       auth: {

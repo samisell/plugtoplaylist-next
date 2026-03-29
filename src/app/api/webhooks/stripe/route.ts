@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { db } from "@/lib/db";
+import { createAdminClient } from "@/lib/supabase/client";
 import { sendPaymentConfirmationEmail, sendNewPaymentAdminNotification } from "@/lib/email";
 import Stripe from "stripe";
 
@@ -7,6 +7,7 @@ const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!);
 const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET!;
 
 export async function POST(request: NextRequest) {
+  const adminClient = createAdminClient();
   const signature = request.headers.get("stripe-signature");
   const body = await request.text();
 
@@ -24,34 +25,53 @@ export async function POST(request: NextRequest) {
 
     try {
       // Find the payment associated with the submission
-      const payment = await db.payment.findFirst({
-        where: { submissionId },
-        include: { submission: true },
-      });
+      const { data: payment, error: paymentError } = await adminClient
+        .from("payments")
+        .select(`
+          *,
+          submission:submissionId (*)
+        `)
+        .eq("submissionId", submissionId)
+        .single();
 
-      if (!payment) {
+      if (paymentError || !payment) {
         return NextResponse.json({ error: "Payment not found" }, { status: 404 });
       }
 
       // Update payment and submission status
-      const updatedPayment = await db.payment.update({
-        where: { id: payment.id },
-        data: {
+      const { data: updatedPayment, error: updatePaymentError } = await adminClient
+        .from("payments")
+        .update({
           status: "completed",
-          paidAt: new Date(),
+          paidAt: new Date().toISOString(),
           providerRef: session.payment_intent as string,
-        },
-      });
+        })
+        .eq("id", payment.id)
+        .select()
+        .single();
 
-      await db.submission.update({
-        where: { id: payment.submissionId },
-        data: {
+      if (updatePaymentError) throw updatePaymentError;
+
+      const { error: updateSubmissionError } = await adminClient
+        .from("submissions")
+        .update({
           paymentStatus: "paid",
-        },
-      });
+        })
+        .eq("id", payment.submissionId);
+
+      if (updateSubmissionError) throw updateSubmissionError;
 
       // Send notification emails
-      const userEmail = payment.userId ? (await db.user.findUnique({ where: { id: payment.userId } }))?.email : payment.submission?.guestEmail;
+      let userEmail = payment.submission?.guestEmail;
+      if (payment.userId) {
+        const { data: userData } = await adminClient
+          .from("users")
+          .select("email")
+          .eq("id", payment.userId)
+          .single();
+        if (userData) userEmail = userData.email;
+      }
+
       if (userEmail) {
         await sendPaymentConfirmationEmail(userEmail, updatedPayment.amount, updatedPayment.currency);
       }
@@ -65,4 +85,4 @@ export async function POST(request: NextRequest) {
   }
 
   return NextResponse.json({ status: "ignored" });
-}
+}
