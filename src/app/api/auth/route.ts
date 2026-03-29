@@ -17,15 +17,15 @@ export async function POST(request: NextRequest) {
     }
 
     if (action === "register") {
-      // Check if user exists
+      // Check if user exists - Try 'User' first
       let { data: existingUser } = await supabase
-        .from("users")
+        .from("User")
         .select("id")
         .eq("email", email)
         .single();
       
       if (!existingUser) {
-        const { data: altUser } = await supabase.from("User").select("id").eq("email", email).single();
+        const { data: altUser } = await supabase.from("users").select("id").eq("email", email).single();
         if (altUser) existingUser = altUser;
       }
 
@@ -41,7 +41,7 @@ export async function POST(request: NextRequest) {
 
       // Create user
       let { data: user, error } = await supabase
-        .from("users")
+        .from("User")
         .insert({
           email,
           name: name || null,
@@ -53,7 +53,7 @@ export async function POST(request: NextRequest) {
 
       if (error) {
          const { data: altUser, error: altError } = await supabase
-           .from("User")
+           .from("users")
            .insert({ email, name: name || null, password, referralCode })
            .select()
            .single();
@@ -80,13 +80,13 @@ export async function POST(request: NextRequest) {
     if (action === "login") {
       // Find user
       let { data: user, error } = await supabase
-        .from("users")
+        .from("User")
         .select("*")
         .eq("email", email)
         .single();
       
       if (error) {
-         const { data: altUser } = await supabase.from("User").select("*").eq("email", email).single();
+         const { data: altUser } = await supabase.from("users").select("*").eq("email", email).single();
          if (altUser) {
             user = altUser;
             error = null;
@@ -138,14 +138,14 @@ export async function GET(request: NextRequest) {
     }
 
     let { data: user, error } = await supabase
-      .from("users")
+      .from("User")
       .select("id, email, name, role, avatar, phone, referralCode, referralEarnings, createdAt")
       .eq("id", userId)
       .single();
     
     if (error) {
         const { data: altUser } = await supabase
-          .from("User")
+          .from("users")
           .select("id, email, name, role, avatar, phone, referralCode, referralEarnings, createdAt")
           .eq("id", userId)
           .single();

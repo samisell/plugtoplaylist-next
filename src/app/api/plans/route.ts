@@ -3,18 +3,18 @@ import { supabase } from "@/lib/supabase/client";
 
 export async function GET() {
   try {
+    // Try Prisma style singular first
     const { data: plans, error } = await supabase
-      .from("plans")
+      .from("Plan")
       .select("*")
       .eq("isActive", true)
       .order("price", { ascending: true });
 
     if (error) {
-      // If table 'plans' doesn't exist, try 'Plan' or 'plan'
+      // If table 'Plan' doesn't exist, try 'plans'
       if (error.code === 'PGRST204' || error.code === 'PGRST205') {
-         // Try singular
          const { data: altPlans, error: altError } = await supabase
-           .from("Plan")
+           .from("plans")
            .select("*")
            .eq("isActive", true)
            .order("price", { ascending: true });
@@ -101,13 +101,12 @@ async function seedDefaultPlans() {
   ];
 
   const { data: createdPlans, error } = await supabase
-    .from("plans")
+    .from("Plan")
     .insert(plans)
     .select();
 
   if (error) {
-     // Try secondary table name if primary fails
-     const { data, error: secondError } = await supabase.from("Plan").insert(plans).select();
+     const { data, error: secondError } = await supabase.from("plans").insert(plans).select();
      if (!secondError) return data;
      throw error;
   }

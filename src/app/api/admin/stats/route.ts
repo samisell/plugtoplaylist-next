@@ -8,45 +8,92 @@ export async function GET(request: NextRequest) {
     
     // In production, add admin authentication check here
     
-    // Get counts
-    const [
-      { count: totalUsers },
-      { count: totalSubmissions },
-      { count: pendingSubmissions },
-      { count: activeSubmissions },
-      { count: completedSubmissions },
-      { data: paidPayments },
-    ] = await Promise.all([
-      adminClient.from("users").select("*", { count: "exact", head: true }),
-      adminClient.from("submissions").select("*", { count: "exact", head: true }),
-      adminClient.from("submissions").select("*", { count: "exact", head: true }).eq("status", "pending"),
-      adminClient.from("submissions").select("*", { count: "exact", head: true }).eq("status", "active"),
-      adminClient.from("submissions").select("*", { count: "exact", head: true }).eq("status", "completed"),
-      adminClient.from("payments").select("amount").eq("status", "paid"),
-    ]);
+    // Attempt to get counts using prioritized table names (Prisma style)
+    const getCounts = async () => {
+        const tables = ["User", "Submission", "Payment"];
+        const results: Record<string, any> = {};
+        
+        for (const table of tables) {
+            let { count, error } = await adminClient.from(table).select("*", { count: "exact", head: true });
+            
+            if (error && (error.code === 'PGRST204' || error.code === 'PGRST205')) {
+                // Try plural fallback
+                const pluralName = `${table.toLowerCase()}s`;
+                const { count: altCount, error: altError } = await adminClient.from(pluralName).select("*", { count: "exact", head: true });
+                if (!altError) count = altCount;
+            }
+            results[table] = count || 0;
+        }
+        return results;
+    };
 
-    const totalRevenue = paidPayments?.reduce((sum, p) => sum + p.amount, 0) || 0;
+    const counts = await getCounts();
+
+    // Get specific status counts for submissions
+    const getSubmissionStats = async () => {
+        const stats = { pending: 0, active: 0, completed: 0 };
+        const statuses = ["pending", "active", "completed"] as const;
+        
+        for (const status of statuses) {
+            let { count, error } = await adminClient.from("Submission").select("*", { count: "exact", head: true }).eq("status", status);
+            if (error && (error.code === 'PGRST204' || error.code === 'PGRST205')) {
+                const { count: altCount, error: altError } = await adminClient.from("submissions").select("*", { count: "exact", head: true }).eq("status", status);
+                if (!altError) count = altCount;
+            }
+            stats[status] = count || 0;
+        }
+        return stats;
+    };
+
+    const subStats = await getSubmissionStats();
+
+    // Get paid payments for revenue
+    let { data: paidPayments, error: paymentError } = await adminClient.from("Payment").select("amount").eq("status", "paid");
+    if (paymentError && (paymentError.code === 'PGRST204' || paymentError.code === 'PGRST205')) {
+        const { data: altPayments } = await adminClient.from("payments").select("amount").eq("status", "paid");
+        paidPayments = altPayments;
+    }
+
+    const totalRevenue = paidPayments?.reduce((sum, p) => sum + (p.amount || 0), 0) || 0;
 
     // Get recent submissions
-    const { data: recentSubmissions } = await adminClient
-      .from("submissions")
+    let { data: recentSubmissions, error: recentError } = await adminClient
+      .from("Submission")
       .select(`
         *,
         plan:planId (*),
-        payment:id (*)
+        payment:submissionId (amount, currency, status, provider)
       `)
       .order("createdAt", { ascending: false })
       .limit(10);
+
+    if (recentError && (recentError.code === 'PGRST204' || recentError.code === 'PGRST205')) {
+        const { data: altSubmissions } = await adminClient
+          .from("submissions")
+          .select(`
+            *,
+            plan:planId (*),
+            payment:submissionId (amount, currency, status, provider)
+          `)
+          .order("createdAt", { ascending: false })
+          .limit(10);
+        recentSubmissions = altSubmissions;
+    }
 
     // Get monthly revenue (last 6 months)
     const sixMonthsAgo = new Date();
     sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 6);
 
-    const { data: payments } = await adminClient
-      .from("payments")
+    let { data: payments } = await adminClient
+      .from("Payment")
       .select("amount, paidAt")
       .eq("status", "paid")
       .gte("paidAt", sixMonthsAgo.toISOString());
+    
+    if (!payments) {
+       const { data: altPayments } = await adminClient.from("payments").select("amount, paidAt").eq("status", "paid").gte("paidAt", sixMonthsAgo.toISOString());
+       payments = altPayments;
+    }
 
     // Group by month
     const monthlyRevenue: Record<string, number> = {};
@@ -72,11 +119,11 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json({
       stats: {
-        totalUsers: totalUsers || 0,
-        totalSubmissions: totalSubmissions || 0,
-        pendingSubmissions: pendingSubmissions || 0,
-        activeSubmissions: activeSubmissions || 0,
-        completedSubmissions: completedSubmissions || 0,
+        totalUsers: counts["User"],
+        totalSubmissions: counts["Submission"],
+        pendingSubmissions: subStats.pending,
+        activeSubmissions: subStats.active,
+        completedSubmissions: subStats.completed,
         totalRevenue,
         revenueGrowth,
       },

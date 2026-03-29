@@ -24,9 +24,9 @@ export async function POST(request: NextRequest) {
     const { submissionId } = session.metadata!;
 
     try {
-      // Find the payment associated with the submission
-      const { data: payment, error: paymentError } = await adminClient
-        .from("payments")
+      // Find the payment associated with the submission - Try singular first
+      let { data: payment, error: paymentError } = await adminClient
+        .from("Payment")
         .select(`
           *,
           submission:submissionId (*)
@@ -34,13 +34,15 @@ export async function POST(request: NextRequest) {
         .eq("submissionId", submissionId)
         .single();
 
-      if (paymentError || !payment) {
-        return NextResponse.json({ error: "Payment not found" }, { status: 404 });
+      if (paymentError) {
+        const { data: altPayment, error: altError } = await adminClient.from("payments").select("*, submission:submissionId(*)").eq("submissionId", submissionId).single();
+        if (!altError) payment = altPayment;
+        else return NextResponse.json({ error: "Payment not found" }, { status: 404 });
       }
 
       // Update payment and submission status
-      const { data: updatedPayment, error: updatePaymentError } = await adminClient
-        .from("payments")
+      let { data: updatedPayment, error: updatePaymentError } = await adminClient
+        .from("Payment")
         .update({
           status: "completed",
           paidAt: new Date().toISOString(),
@@ -49,26 +51,37 @@ export async function POST(request: NextRequest) {
         .eq("id", payment.id)
         .select()
         .single();
-
-      if (updatePaymentError) throw updatePaymentError;
+      
+      if (updatePaymentError) {
+          const { data: altUpdate, error: altUpdateError } = await adminClient
+            .from("payments")
+            .update({ status: "completed", paidAt: new Date().toISOString(), providerRef: session.payment_intent as string })
+            .eq("id", payment.id)
+            .select()
+            .single();
+          if (altUpdateError) throw updatePaymentError;
+          updatedPayment = altUpdate;
+      }
 
       const { error: updateSubmissionError } = await adminClient
-        .from("submissions")
+        .from("Submission")
         .update({
           paymentStatus: "paid",
         })
         .eq("id", payment.submissionId);
 
-      if (updateSubmissionError) throw updateSubmissionError;
+      if (updateSubmissionError) {
+          await adminClient.from("submissions").update({ paymentStatus: "paid" }).eq("id", payment.submissionId);
+      }
 
       // Send notification emails
       let userEmail = payment.submission?.guestEmail;
       if (payment.userId) {
-        const { data: userData } = await adminClient
-          .from("users")
-          .select("email")
-          .eq("id", payment.userId)
-          .single();
+        let { data: userData } = await adminClient.from("User").select("email").eq("id", payment.userId).single();
+        if (!userData) {
+            const { data: altUser } = await adminClient.from("users").select("email").eq("id", payment.userId).single();
+            userData = altUser;
+        }
         if (userData) userEmail = userData.email;
       }
 

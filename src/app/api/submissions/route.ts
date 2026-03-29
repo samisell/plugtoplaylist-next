@@ -13,7 +13,7 @@ export async function GET(request: NextRequest) {
     const status = searchParams.get("status");
 
     let query = supabase
-      .from("submissions")
+      .from("Submission") // Try singular first
       .select(`
         *,
         plan:planId (*),
@@ -32,9 +32,9 @@ export async function GET(request: NextRequest) {
     let { data: submissions, error } = await query;
 
     if (error && (error.code === 'PGRST204' || error.code === 'PGRST205')) {
-       // Try singular fallback
+       // Try plural fallback if singular fails
        let altQuery = supabase
-        .from("Submission")
+        .from("submissions")
         .select(`
             *,
             plan:planId (*),
@@ -89,9 +89,9 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Create submission
+    // Create submission - Try singular first
     let { data: submission, error: submissionError } = await supabase
-      .from("submissions")
+      .from("Submission")
       .insert({
         userId: userId || null,
         guestEmail: guestEmail || null,
@@ -115,9 +115,9 @@ export async function POST(request: NextRequest) {
       .single();
 
     if (submissionError) {
-        // Try singular fallback
+        // Try plural fallback
         const { data: altData, error: altError } = await supabase
-          .from("Submission")
+          .from("submissions")
           .insert({
             userId: userId || null,
             guestEmail: guestEmail || null,
@@ -144,24 +144,24 @@ export async function POST(request: NextRequest) {
         submission = altData;
     }
 
-    // Get plan price for payment
+    // Get plan price for payment - Try singular first
     let { data: plan, error: planError } = await supabase
-      .from("plans")
+      .from("Plan")
       .select("*")
       .eq("id", planId)
       .single();
 
     if (planError) {
-        const { data: altData } = await supabase.from("Plan").select("*").eq("id", planId).single();
+        const { data: altData } = await supabase.from("plans").select("*").eq("id", planId).single();
         if (altData) plan = altData;
         else {
             return NextResponse.json({ error: "Plan not found" }, { status: 404 });
         }
     }
 
-    // Create pending payment
+    // Create pending payment - Try singular first
     const { error: paymentError } = await supabase
-      .from("payments")
+      .from("Payment")
       .insert({
         userId: userId || null,
         submissionId: submission.id,
@@ -172,7 +172,7 @@ export async function POST(request: NextRequest) {
       });
 
     if (paymentError) {
-        await supabase.from("Payment").insert({
+        await supabase.from("payments").insert({
             userId: userId || null,
             submissionId: submission.id,
             amount: plan.price,
@@ -210,13 +210,13 @@ export async function POST(request: NextRequest) {
     let userEmail = guestEmail;
     if (userId) {
       const { data: userData } = await supabase
-        .from("users")
+        .from("User")
         .select("email")
         .eq("id", userId)
         .single();
       if (userData) userEmail = userData.email;
       else {
-        const { data: altUserData } = await supabase.from("User").select("email").eq("id", userId).single();
+        const { data: altUserData } = await supabase.from("users").select("email").eq("id", userId).single();
         if (altUserData) userEmail = altUserData.email;
       }
     }
@@ -265,7 +265,7 @@ export async function PATCH(request: NextRequest) {
     }
 
     let { data: submission, error } = await supabase
-      .from("submissions")
+      .from("Submission")
       .update(updateData)
       .eq("id", id)
       .select()
@@ -273,7 +273,7 @@ export async function PATCH(request: NextRequest) {
 
     if (error) {
         const { data: altData, error: altError } = await supabase
-          .from("Submission")
+          .from("submissions")
           .update(updateData)
           .eq("id", id)
           .select()
