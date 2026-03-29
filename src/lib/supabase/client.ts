@@ -1,22 +1,48 @@
-import { createClient } from '@supabase/supabase-js';
+import { createClient, SupabaseClient } from '@supabase/supabase-js';
 import type { Database } from './database.types';
 
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || "https://placeholder-url.supabase.co";
-const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || "placeholder-key";
+// Lazy-loaded client instance
+let supabaseInstance: SupabaseClient<Database> | null = null;
 
-// Client-side Supabase client (uses anon key - limited permissions)
-export const supabase = createClient<Database>(supabaseUrl, supabaseAnonKey, {
-  auth: {
-    persistSession: true,
-    autoRefreshToken: true,
-    detectSessionInUrl: true,
+// Public client (uses anon key)
+export const getSupabase = () => {
+  if (supabaseInstance) return supabaseInstance;
+
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+
+  if (!url || !anonKey || url === "undefined" || anonKey === "undefined") {
+    // Return a dummy client during build to prevent crashes
+    return createClient<Database>("https://placeholder-url.supabase.co", "placeholder-key");
+  }
+
+  supabaseInstance = createClient<Database>(url, anonKey, {
+    auth: {
+      persistSession: true,
+      autoRefreshToken: true,
+      detectSessionInUrl: true,
+    },
+  });
+  return supabaseInstance;
+};
+
+// Export the instance as 'supabase' but using a Proxy to keep it lazy
+export const supabase = new Proxy({} as SupabaseClient<Database>, {
+  get: (target, prop, receiver) => {
+    return Reflect.get(getSupabase(), prop, receiver);
   },
 });
 
 // Server-side Supabase client with service role (full permissions)
 export const createServerClient = () => {
-    const url = process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL || "https://placeholder-url.supabase.co";
-    const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY || "placeholder-role-key";
+  const url = process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+
+  if (!url || !serviceRoleKey || url === "undefined" || serviceRoleKey === "undefined") {
+     // Return a dummy client during build to prevent crashes
+     return createClient<Database>("https://placeholder-url.supabase.co", "placeholder-key");
+  }
+
   return createClient<Database>(
     url,
     serviceRoleKey,
