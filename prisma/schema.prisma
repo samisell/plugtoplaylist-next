@@ -1,0 +1,146 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id        String   @id @default(cuid())
+  email     String   @unique
+  name      String?
+  password  String?
+  role      String   @default("user") // "user" or "admin"
+  avatar    String?
+  phone     String?
+  
+  // Referral system
+  referralCode     String?  @unique
+  referredBy       String?
+  referralEarnings Float    @default(0)
+  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  
+  submissions Submission[]
+  payments    Payment[]
+  referrals   Referral[]  @relation("UserReferrals")
+}
+
+model Plan {
+  id          String   @id @default(cuid())
+  name        String
+  description String?
+  price       Float
+  duration    Int      // Duration in days
+  features    String   // JSON string of features
+  
+  // Plan details
+  playlistPlacements Int    @default(0)
+  socialPromotion    Boolean @default(false)
+  emailMarketing     Boolean @default(false)
+  priority           String  @default("normal") // "normal", "high", "premium"
+  
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  
+  submissions Submission[]
+}
+
+model Submission {
+  id          String   @id @default(cuid())
+  
+  // User info (for both registered and guest)
+  userId      String?
+  guestEmail  String?  // For guest submissions
+  guestName   String?
+  
+  // Song details
+  trackUrl    String   // Spotify or YouTube URL
+  trackType   String   // "spotify" or "youtube"
+  trackId     String?  // Extracted track ID
+  title       String?
+  artist      String?
+  album       String?
+  coverImage  String?
+  duration    Int?     // Duration in seconds
+  
+  // Plan & Payment
+  planId      String?
+  status      String   @default("pending") // "pending", "active", "completed", "cancelled"
+  paymentStatus String @default("pending") // "pending", "paid", "failed", "refunded"
+  
+  // Promotion details
+  startDate   DateTime?
+  endDate     DateTime?
+  notes       String?
+  
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  
+  user        User?    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  plan        Plan?    @relation(fields: [planId], references: [id])
+  payment     Payment?
+}
+
+model Payment {
+  id            String   @id @default(cuid())
+  userId        String?
+  submissionId  String   @unique
+  
+  amount        Float
+  currency      String   @default("USD")
+  status        String   @default("pending") // "pending", "completed", "failed", "refunded"
+  
+  // Payment provider info
+  provider      String   @default("paystack") // "paystack" or "flutterwave"
+  providerRef   String?  // Payment provider reference
+  
+  paidAt        DateTime?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  
+  user          User?      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  submission    Submission @relation(fields: [submissionId], references: [id], onDelete: Cascade)
+}
+
+model Referral {
+  id          String   @id @default(cuid())
+  referrerId  String
+  referredId  String
+  earnings    Float    @default(0)
+  status      String   @default("pending") // "pending", "paid"
+  createdAt   DateTime @default(now())
+  
+  referrer    User     @relation("UserReferrals", fields: [referrerId], references: [id])
+}
+
+model Coupon {
+  id          String   @id @default(cuid())
+  code        String   @unique
+  discount    Float    // Percentage discount
+  maxUses     Int?
+  usedCount   Int      @default(0)
+  expiresAt   DateTime?
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model Testimonial {
+  id          String   @id @default(cuid())
+  name        String
+  role        String?
+  avatar      String?
+  content     String
+  rating      Int      @default(5)
+  isVisible   Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
