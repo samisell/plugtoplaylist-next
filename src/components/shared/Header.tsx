@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
+import Image from "next/image";
 import { motion, AnimatePresence } from "framer-motion";
 import { 
   Music, 
@@ -34,13 +35,7 @@ export function Header() {
         <div className="flex items-center justify-between h-16 md:h-20">
           {/* Logo */}
           <Link href="/" className="flex items-center gap-2 group">
-            <motion.div
-              whileHover={{ rotate: 360 }}
-              transition={{ duration: 0.5 }}
-              className="w-10 h-10 rounded-lg bg-gold flex items-center justify-center"
-            >
-              <Music className="w-5 h-5 text-luxury-black" />
-            </motion.div>
+            <Image src="/PTP-mini.png" alt="PlugToPlaylist Logo" width={40} height={40} />
             <span className="text-xl font-bold text-white group-hover:text-gold transition-colors">
               PlugTo<span className="text-gold">Playlist</span>
             </span>
@@ -134,9 +129,7 @@ export function DashboardHeader() {
         <div className="flex items-center justify-between h-16">
           {/* Logo */}
           <Link href="/" className="flex items-center gap-2 group">
-            <div className="w-8 h-8 rounded-lg bg-gold flex items-center justify-center">
-              <Music className="w-4 h-4 text-luxury-black" />
-            </div>
+            <Image src="/PTP-mini.png" alt="PlugToPlaylist Logo" width={32} height={32} />
             <span className="text-lg font-bold text-white">
               PlugTo<span className="text-gold">Playlist</span>
             </span>

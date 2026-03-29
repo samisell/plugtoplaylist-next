@@ -10,7 +10,7 @@ export const metadata: Metadata = {
   keywords: ["music promotion", "playlist placement", "spotify promotion", "youtube promotion", "artist marketing", "music marketing"],
   authors: [{ name: "PlugToPlaylist Team" }],
   icons: {
-    icon: "/logo.svg",
+    icon: "/favicon.png",
   },
   openGraph: {
     title: "PlugToPlaylist - Premium Music Promotion",

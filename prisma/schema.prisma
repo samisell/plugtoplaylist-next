@@ -6,7 +6,7 @@ generator client {
 }
 
 datasource db {
-  provider = "sqlite"
+  provider = "postgresql"
   url      = env("DATABASE_URL")
 }
 
@@ -14,7 +14,14 @@ model User {
   id        String   @id @default(cuid())
   email     String   @unique
   name      String?
-  password  String?
+  password  String
+
+  emailVerified           DateTime?
+  verificationToken       String?   @unique
+  verificationTokenExpiry DateTime?
+  passwordResetToken      String?   @unique
+  passwordResetTokenExpiry DateTime?
+
   role      String   @default("user") // "user" or "admin"
   avatar    String?
   phone     String?
@@ -99,7 +106,7 @@ model Payment {
   status        String   @default("pending") // "pending", "completed", "failed", "refunded"
   
   // Payment provider info
-  provider      String   @default("paystack") // "paystack" or "flutterwave"
+  provider      String   @default("stripe") // "stripe" or "flutterwave"
   providerRef   String?  // Payment provider reference
   
   paidAt        DateTime?
@@ -143,4 +150,14 @@ model Testimonial {
   isVisible   Boolean  @default(true)
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
+}
+
+model EmailTemplate {
+  id        String   @id @default(cuid())
+  name      String   @unique // e.g., "welcome", "submission-confirmation"
+  subject   String
+  htmlBody  String   @db.Text
+  textBody  String   @db.Text
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }

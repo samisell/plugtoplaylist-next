@@ -1,5 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
+import { sendSubmissionConfirmationEmail, sendNewSubmissionAdminNotification } from "@/lib/email";
+import Stripe from "stripe";
+
+const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!);
 
 // GET - List submissions
 export async function GET(request: NextRequest) {
@@ -100,18 +104,49 @@ export async function POST(request: NextRequest) {
     }
 
     // Create pending payment
-    await db.payment.create({
+    const payment = await db.payment.create({
       data: {
         userId: userId || null,
         submissionId: submission.id,
         amount: plan.price,
         currency: "USD",
         status: "pending",
-        provider: "paystack",
+        provider: "stripe",
       },
     });
 
-    return NextResponse.json({ submission }, { status: 201 });
+    // Create a Stripe Checkout Session
+    const session = await stripe.checkout.sessions.create({
+      payment_method_types: ["card"],
+      line_items: [
+        {
+          price_data: {
+            currency: "usd",
+            product_data: {
+              name: plan.name,
+              description: submission.title,
+            },
+            unit_amount: Math.round(plan.price * 100),
+          },
+          quantity: 1,
+        },
+      ],
+      mode: "payment",
+      success_url: `${request.headers.get("origin")}/dashboard/submissions?success=true`,
+      cancel_url: `${request.headers.get("origin")}/submit?canceled=true`,
+      metadata: {
+        submissionId: submission.id,
+      },
+    });
+
+    // Send notification emails
+    const userEmail = userId ? (await db.user.findUnique({ where: { id: userId } }))?.email : guestEmail;
+    if (userEmail) {
+      await sendSubmissionConfirmationEmail(userEmail, submission.id);
+    }
+    await sendNewSubmissionAdminNotification(submission.id, submission.trackUrl);
+
+    return NextResponse.json({ submission, checkoutUrl: session.url }, { status: 201 });
   } catch (error) {
     console.error("Error creating submission:", error);
     return NextResponse.json(

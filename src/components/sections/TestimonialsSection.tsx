@@ -8,58 +8,58 @@ const testimonials = [
   {
     name: "W4",
     role: "Artist",
-    image: "/testimonials/w4.jpg", // Placeholder - user will provide
+    image: "/w4.jpg",
     content: "Plug to Playlists helped me keep my streams up and get my new drops on playlists that really matter. It's a solid service that delivers results.",
-    hasImage: false,
+    hasImage: true,
   },
   {
     name: "POPITO",
     role: "Artist",
-    image: "/testimonials/popito.jpg", // Placeholder - user will provide
+    image: "/popito.jfif",
     content: "My streams spiked after placements, and my music started hitting new listeners who actually stuck around. That's how you build a fanbase.",
-    hasImage: false,
+    hasImage: true,
   },
   {
     name: "Blue Nax",
     role: "Artist",
-    image: "/testimonials/blue-nax.jpg", // Placeholder - user will provide
+    image: "/Blue nax.jpg",
     content: "Plug to Playlists gave me a real push when I needed it most. The placements connected me with new listeners and boosted my confidence as an artist. For anyone on the come-up, this is the way to go.",
-    hasImage: false,
+    hasImage: true,
   },
   {
     name: "DJ Fineface SA",
     role: "DJ & Producer",
-    image: "/testimonials/dj-fineface.jpg", // Placeholder - user will provide
+    image: "/DJ Fineface sa.jpg",
     content: "As a DJ and producer, I rely on visibility. Plug to Playlists helped push my music to Spotify and YouTube audiences I couldn't reach alone. The placements gave me the extra traction to connect with fans globally.",
-    hasImage: false,
+    hasImage: true,
   },
   {
     name: "Afro100",
     role: "Music Distribution",
-    image: "/testimonials/afro100.jpg", // Placeholder - user will provide
+    image: "/afro100.jpg",
     content: "At Afro100, we manage multiple artists, and Plug to Playlists has become a key partner in our growth strategy. Every artist we've run through their service has seen real results higher streams, more followers, and stronger playlist presence. For distributors like us, they're not just a service, they're a bridge to success.",
-    hasImage: false,
+    hasImage: true,
   },
   {
     name: "King Page",
     role: "Artist",
-    image: "/testimonials/king-page.jpg", // Placeholder - user will provide
+    image: "/king page.jpg",
     content: "NA SO, Plug to Playlists is the real plug. They got my single into curated playlists that matched my sound, and the engagement was instant. More streams, more fans, and more visibility are what every artist is chasing.",
-    hasImage: false,
+    hasImage: true,
   },
   {
     name: "B Fela",
     role: "Afrobeat Artist",
-    image: "/testimonials/b-fela.jpg", // Placeholder - user will provide
+    image: "/b fela.jpg",
     content: "As an Afrobeat artist, it's not always easy to break into international playlists, but Plug to Playlists made it happen. My track started reaching audiences outside my home country, and that exposure is priceless.",
-    hasImage: false,
+    hasImage: true,
   },
   {
     name: "Big Khalid",
     role: "Artist",
-    image: "/testimonials/big-khalid.jpg", // Placeholder - user will provide
+    image: "/big khalid.jpg",
     content: "I needed my music in front of new ears, and Plug to Playlists delivered. Not only did I get playlist placements, but I also saw my fanbase expand across different platforms. Definitely worth it.",
-    hasImage: false,
+    hasImage: true,
   },
 ];
 
@@ -119,10 +119,19 @@ export function TestimonialsSection() {
                 {/* Image Placeholder */}
                 <div className="mb-4">
                   <div className="w-16 h-16 rounded-full bg-gradient-to-br from-gold/30 to-brand-orange/20 border-2 border-gold/40 flex items-center justify-center overflow-hidden">
-                    {/* Placeholder for artist image - user will provide actual images */}
-                    <span className="text-xl font-bold text-gold">
-                      {testimonial.name.charAt(0)}
-                    </span>
+                    {testimonial.hasImage ? (
+                      <Image
+                        src={testimonial.image}
+                        alt={testimonial.name}
+                        width={64}
+                        height={64}
+                        className="object-cover"
+                      />
+                    ) : (
+                      <span className="text-xl font-bold text-gold">
+                        {testimonial.name.charAt(0)}
+                      </span>
+                    )}
                   </div>
                 </div>
 

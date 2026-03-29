@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { randomBytes } from "crypto";
+import { sendWelcomeEmail, sendNewUserAdminNotification } from "@/lib/email";
 
 // POST - Register or Login
 export async function POST(request: NextRequest) {
@@ -40,6 +41,10 @@ export async function POST(request: NextRequest) {
           referralCode,
         },
       });
+
+      // Send notification emails
+      await sendWelcomeEmail(user.email, user.name || 'New User');
+      await sendNewUserAdminNotification(user.email);
 
       return NextResponse.json({
         user: {
