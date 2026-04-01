@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createServerClient } from "@/lib/supabase/client";
+import { createAdminClient } from "@/lib/supabase/admin";
 
 export const dynamic = "force-dynamic";
 
@@ -11,11 +11,11 @@ export async function GET(request: NextRequest) {
 
     if (!userId) return NextResponse.json({ error: "User ID is required" }, { status: 400 });
 
-    const adminSupabase = createServerClient();
+    const adminSupabase = createAdminClient() as any;
     
     // Primary plural 'users' - snakeCase standardized
     const { data: user, error } = await adminSupabase
-      .from("users")
+      .from("users" as any)
       .select("*")
       .eq("id", userId)
       .single();
@@ -26,7 +26,9 @@ export async function GET(request: NextRequest) {
     const mappedUser = {
         ...user,
         name: user.display_name || (user as any).name, // Fallback for various table versions
-        avatar: user.avatar_url || (user as any).avatar
+        avatar: user.avatar_url || (user as any).avatar,
+        referralCode: user.metadata?.referral_code || user.metadata?.referralCode || user.referralCode,
+        location: user.location
     };
 
     return NextResponse.json({ user: mappedUser });
@@ -44,7 +46,7 @@ export async function PATCH(request: NextRequest) {
 
     if (!userId) return NextResponse.json({ error: "User ID is required" }, { status: 400 });
 
-    const adminSupabase = createServerClient();
+    const adminSupabase = createAdminClient() as any;
     
     // Map camelCase frontend fields to actual Supabase snake_case columns
     const snakeCaseUpdates: any = {};

@@ -3,135 +3,165 @@
 import { useState, useEffect } from "react";
 import { motion } from "framer-motion";
 import {
-  Settings,
   User,
   Bell,
   Shield,
   CreditCard,
-  Globe,
-  Mail,
-  Phone,
-  Camera,
   Save,
-  Eye,
-  EyeOff,
-  Key,
-  Smartphone,
-  Trash2,
-  Download,
   Loader2,
+  Copy,
+  CheckCheck,
+  Crown,
 } from "lucide-react";
 import { UserLayout } from "@/components/user/UserLayout";
 import { GoldButton, GlowCard } from "@/components/shared";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Switch } from "@/components/ui/switch";
-import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
 const settingSections = [
-  { id: "profile", label: "Profile", icon: User },
-  { id: "security", label: "Security", icon: Shield },
+  { id: "profile",       label: "Profile",       icon: User },
+  { id: "security",      label: "Security",      icon: Shield },
   { id: "notifications", label: "Notifications", icon: Bell },
-  { id: "billing", label: "Billing", icon: CreditCard },
+  { id: "billing",       label: "Billing",       icon: CreditCard },
 ];
 
 export default function UserSettingsPage() {
-  const [activeSection, setActiveSection] = useState("profile");
-  const [showPassword, setShowPassword] = useState(false);
-  const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
-  const [payments, setPayments] = useState<any[]>([]);
+  const [activeSection, setActiveSection]   = useState("profile");
+  const [loading,  setLoading]              = useState(true);
+  const [saving,   setSaving]               = useState(false);
+  const [saved,    setSaved]                = useState(false);
+  const [error,    setError]                = useState("");
+  const [codeCopied, setCodeCopied]         = useState(false);
+  const [payments, setPayments]             = useState<any[]>([]);
+  const [userId,   setUserId]               = useState<string | null>(null);
+
   const [profileData, setProfileData] = useState({
-    name: "",
-    email: "",
-    phone: "",
-    bio: "",
-    genre: "",
-    location: "",
-    referralCode: "",
+    name:          "",
+    email:         "",
+    phone:         "",
+    bio:           "",
+    genre:         "",
+    location:      "",
+    referralCode:  "",
     walletBalance: 0,
   });
 
+  // ─── Load user on mount ──────────────────────────────────────────────────────
   useEffect(() => {
-    async function fetchData() {
+    async function load() {
       try {
         setLoading(true);
-        const storedUser = localStorage.getItem("user");
-        if (!storedUser) {
-          setLoading(false);
-          return;
-        }
-        const user = JSON.parse(storedUser);
 
-        // Fetch user profile
-        const userRes = await fetch(`/api/user?userId=${user.id}`);
-        const { user: profile } = await userRes.json();
+        // 1. Try localStorage (populated when visiting /dashboard)
+        let uid: string | null = null;
+        const stored = localStorage.getItem("user");
+        if (stored) {
+          const local = JSON.parse(stored);
+          uid = local?.id;
+        }
+
+        // 2. Fall back to live session API
+        if (!uid) {
+          const sRes = await fetch("/api/auth/session");
+          if (sRes.ok) {
+            const { user: su } = await sRes.json();
+            uid = su?.id ?? null;
+          }
+        }
+
+        if (!uid) { setLoading(false); return; }
+        setUserId(uid);
+
+        // 3. Fetch full profile from DB
+        const [pRes, payRes] = await Promise.all([
+          fetch(`/api/user?userId=${uid}`),
+          fetch(`/api/payments?userId=${uid}`),
+        ]);
+
+        const { user: profile } = await pRes.json();
+        const { payments: hist } = payRes.ok ? await payRes.json() : { payments: [] };
+
+        setPayments(hist || []);
+
         if (profile) {
           setProfileData({
-            name: profile.name || "",
-            email: profile.email || "",
-            phone: profile.phone || "",
-            bio: profile.bio || "",
-            genre: profile.genre || "",
-            location: profile.location || "",
-            referralCode: profile.referralCode || "",
-            walletBalance: profile.walletBalance || 0,
+            name:          profile.display_name || profile.name || "",
+            email:         profile.email || "",
+            phone:         profile.phone || "",
+            bio:           profile.bio   || "",
+            genre:         profile.genre || "",
+            location:      profile.location || "",
+            referralCode:  profile.metadata?.referral_code || profile.referralCode || "",
+            walletBalance: profile.wallet_balance || profile.walletBalance || 0,
           });
         }
-
-        // Fetch payments
-        const payRes = await fetch(`/api/payments?userId=${user.id}`);
-        const { payments: history } = await payRes.json();
-        setPayments(history || []);
-      } catch (error) {
-        console.error("Error fetching settings data:", error);
+      } catch (e) {
+        console.error("Settings load error:", e);
       } finally {
         setLoading(false);
       }
     }
-    fetchData();
+    load();
   }, []);
 
+  // ─── Save profile ────────────────────────────────────────────────────────────
   const handleSave = async () => {
+    if (!userId) return;
     try {
       setSaving(true);
-      const storedUser = localStorage.getItem("user");
-      if (!storedUser) return;
-      const user = JSON.parse(storedUser);
+      setError("");
 
       const res = await fetch("/api/user", {
-        method: "PATCH",
+        method:  "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          userId: user.id,
-          name: profileData.name,
-          phone: profileData.phone,
-          bio: profileData.bio,
-          genre: profileData.genre,
+          userId,
+          name:     profileData.name,
+          phone:    profileData.phone,
+          bio:      profileData.bio,
+          genre:    profileData.genre,
           location: profileData.location,
         }),
       });
 
-      if (!res.ok) throw new Error("Failed to update profile");
-      
-      // Update local storage name if changed
-      const updatedUser = { ...user, name: profileData.name };
-      localStorage.setItem("user", JSON.stringify(updatedUser));
-      
-      alert("Profile updated successfully!");
-    } catch (error) {
-      console.error(error);
-      alert("Error saving profile");
+      if (!res.ok) {
+        const body = await res.json();
+        throw new Error(body.error || "Failed to update profile");
+      }
+
+      // Update localStorage so sidebar reflects change immediately
+      const stored = localStorage.getItem("user");
+      const parsed = stored ? JSON.parse(stored) : {};
+      localStorage.setItem("user", JSON.stringify({
+        ...parsed,
+        name:         profileData.name,
+        display_name: profileData.name,
+        phone:        profileData.phone,
+      }));
+
+      setSaved(true);
+      setTimeout(() => setSaved(false), 3000);
+    } catch (e: any) {
+      console.error(e);
+      setError(e.message || "Error saving profile");
     } finally {
       setSaving(false);
+    }
+  };
+
+  const copyReferralCode = () => {
+    if (profileData.referralCode) {
+      navigator.clipboard.writeText(profileData.referralCode);
+      setCodeCopied(true);
+      setTimeout(() => setCodeCopied(false), 2000);
     }
   };
 
   if (loading) {
     return (
       <UserLayout title="Settings" subtitle="Manage your account preferences">
-        <div className="flex items-center justify-center py-20">
+        <div className="flex items-center justify-center py-32">
           <Loader2 className="w-12 h-12 text-gold animate-spin" />
         </div>
       </UserLayout>
@@ -143,14 +173,22 @@ export default function UserSettingsPage() {
       title="Settings"
       subtitle="Manage your account preferences"
       actions={
-        <GoldButton onClick={handleSave} loading={saving}>
-          <Save className="w-4 h-4 mr-2" />
-          Save Changes
-        </GoldButton>
+        <div className="flex items-center gap-3">
+          {saved && (
+            <span className="text-green-400 text-sm flex items-center gap-1">
+              <CheckCheck className="w-4 h-4" /> Saved!
+            </span>
+          )}
+          {error && <span className="text-red-400 text-sm">{error}</span>}
+          <GoldButton onClick={handleSave} loading={saving} disabled={!userId}>
+            <Save className="w-4 h-4 mr-2" />
+            Save Changes
+          </GoldButton>
+        </div>
       }
     >
       <div className="flex flex-col lg:flex-row gap-6">
-        {/* Sidebar */}
+        {/* Sidebar nav */}
         <div className="lg:w-56 flex-shrink-0">
           <div className="bg-luxury-dark border border-gold/10 rounded-xl overflow-hidden">
             <div className="p-2 space-y-1">
@@ -175,27 +213,40 @@ export default function UserSettingsPage() {
 
         {/* Content */}
         <div className="flex-1 min-w-0">
-          {/* Profile Section */}
+
+          {/* ── Profile ── */}
           {activeSection === "profile" && (
-            <motion.div
-              initial={{ opacity: 0, y: 10 }}
-              animate={{ opacity: 1, y: 0 }}
-              className="space-y-6"
-            >
-              {/* Personal Info */}
+            <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="space-y-6">
+
+              {/* Avatar + name header */}
+              <GlowCard variant="premium" className="p-5">
+                <div className="flex items-center gap-5">
+                  <div className="w-16 h-16 rounded-full bg-gold/20 border-2 border-gold/40 flex items-center justify-center flex-shrink-0">
+                    <User className="w-8 h-8 text-gold" />
+                  </div>
+                  <div className="text-left">
+                    <h3 className="text-lg font-semibold text-white">{profileData.name || "Your Name"}</h3>
+                    <p className="text-sm text-luxury-gray">{profileData.email}</p>
+                    <p className="text-xs text-gold mt-1">Registered user</p>
+                  </div>
+                </div>
+              </GlowCard>
+
+              {/* Personal info form */}
               <GlowCard variant="default" className="p-5">
-                <h3 className="text-lg font-semibold text-white mb-4">Personal Information</h3>
+                <h3 className="text-lg font-semibold text-white mb-5 text-left">Personal Information</h3>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <Label className="text-white text-left block">Full Name</Label>
+                  <div className="space-y-2 text-left">
+                    <Label className="text-white">Full Name</Label>
                     <Input
                       value={profileData.name}
                       onChange={(e) => setProfileData({ ...profileData, name: e.target.value })}
+                      placeholder="Your full name"
                       className="bg-luxury-lighter border-gold/20 focus:border-gold text-white"
                     />
                   </div>
-                  <div className="space-y-2">
-                    <Label className="text-white text-left block">Email (Read-only)</Label>
+                  <div className="space-y-2 text-left">
+                    <Label className="text-white">Email Address <span className="text-luxury-gray text-xs">(read-only)</span></Label>
                     <Input
                       type="email"
                       value={profileData.email}
@@ -204,10 +255,11 @@ export default function UserSettingsPage() {
                     />
                   </div>
                   <div className="space-y-2 text-left">
-                    <Label className="text-white">Phone</Label>
+                    <Label className="text-white">Phone Number</Label>
                     <Input
                       value={profileData.phone}
                       onChange={(e) => setProfileData({ ...profileData, phone: e.target.value })}
+                      placeholder="+1 234 567 890"
                       className="bg-luxury-lighter border-gold/20 focus:border-gold text-white"
                     />
                   </div>
@@ -216,6 +268,16 @@ export default function UserSettingsPage() {
                     <Input
                       value={profileData.location}
                       onChange={(e) => setProfileData({ ...profileData, location: e.target.value })}
+                      placeholder="City, Country"
+                      className="bg-luxury-lighter border-gold/20 focus:border-gold text-white"
+                    />
+                  </div>
+                  <div className="space-y-2 text-left">
+                    <Label className="text-white">Genre / Style</Label>
+                    <Input
+                      value={profileData.genre}
+                      onChange={(e) => setProfileData({ ...profileData, genre: e.target.value })}
+                      placeholder="e.g. R&B, Hip-Hop, Pop"
                       className="bg-luxury-lighter border-gold/20 focus:border-gold text-white"
                     />
                   </div>
@@ -224,36 +286,45 @@ export default function UserSettingsPage() {
                     <textarea
                       value={profileData.bio}
                       onChange={(e) => setProfileData({ ...profileData, bio: e.target.value })}
-                      className="w-full h-24 bg-luxury-lighter border border-gold/20 rounded-lg p-3 text-white placeholder:text-luxury-gray focus:border-gold focus:outline-none resize-none"
+                      placeholder="Tell us a bit about yourself and your music..."
+                      rows={3}
+                      className="w-full bg-luxury-lighter border border-gold/20 rounded-lg p-3 text-white placeholder:text-luxury-gray focus:border-gold focus:outline-none resize-none"
                     />
                   </div>
                 </div>
               </GlowCard>
 
-              {/* Referral Info */}
+              {/* Referral code */}
               <GlowCard variant="premium" className="p-5">
-                <h3 className="text-lg font-semibold text-white mb-4">Referral System</h3>
-                <div className="p-4 bg-gold/5 border border-gold/10 rounded-lg">
-                  <p className="text-sm text-luxury-gray mb-2">Your unique referral code:</p>
-                  <div className="text-2xl font-bold text-gold tracking-widest uppercase">
-                    {profileData.referralCode || "GETTING..."}
-                  </div>
-                  <p className="text-xs text-luxury-gray mt-2">
-                    Earn rewards for every user you refer to PlugToPlaylist!
+                <h3 className="text-lg font-semibold text-white mb-4 flex items-center gap-2 text-left">
+                  <Crown className="w-5 h-5 text-gold" />
+                  Your Referral Code
+                </h3>
+                <div className="bg-gold/5 border border-gold/20 rounded-xl p-5 text-left">
+                  <p className="text-sm text-luxury-gray mb-3">
+                    Share your unique code and earn rewards for every user you bring to PlugToPlaylist!
                   </p>
+                  <div className="flex items-center gap-3">
+                    <div className="flex-1 bg-luxury-lighter rounded-lg px-4 py-3 font-mono text-2xl font-bold text-gold tracking-widest uppercase select-all">
+                      {profileData.referralCode || "—"}
+                    </div>
+                    <button
+                      onClick={copyReferralCode}
+                      disabled={!profileData.referralCode}
+                      className="p-3 rounded-lg bg-gold/10 hover:bg-gold/20 text-gold transition-colors disabled:opacity-40"
+                    >
+                      {codeCopied ? <CheckCheck className="w-5 h-5" /> : <Copy className="w-5 h-5" />}
+                    </button>
+                  </div>
+                  {codeCopied && <p className="text-xs text-green-400 mt-2">Copied to clipboard!</p>}
                 </div>
               </GlowCard>
             </motion.div>
           )}
 
-          {/* Billing Section */}
+          {/* ── Billing ── */}
           {activeSection === "billing" && (
-            <motion.div
-              initial={{ opacity: 0, y: 10 }}
-              animate={{ opacity: 1, y: 0 }}
-              className="space-y-6 text-left"
-            >
-              {/* Wallet Card */}
+            <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="space-y-6 text-left">
               <GlowCard variant="premium" className="p-5">
                 <div className="flex items-start justify-between">
                   <div>
@@ -261,20 +332,13 @@ export default function UserSettingsPage() {
                     <p className="text-luxury-gray text-sm">Credits available for promotion</p>
                   </div>
                   <div className="text-3xl font-bold text-gold">
-                    ${profileData.walletBalance.toFixed(2)}
+                    £{profileData.walletBalance.toFixed(2)}
                   </div>
-                </div>
-                <div className="mt-6 flex gap-3">
-                  <GoldButton size="sm">Add Funds</GoldButton>
-                  <GoldButton variant="outline" size="sm">Redeem Coupon</GoldButton>
                 </div>
               </GlowCard>
 
-              {/* Billing History */}
               <GlowCard variant="default" className="p-5">
-                <div className="flex items-center justify-between mb-4">
-                  <h3 className="text-lg font-semibold text-white">Billing History</h3>
-                </div>
+                <h3 className="text-lg font-semibold text-white mb-4">Billing History</h3>
                 <div className="overflow-x-auto">
                   <table className="w-full">
                     <thead>
@@ -288,29 +352,31 @@ export default function UserSettingsPage() {
                     <tbody>
                       {payments.length === 0 ? (
                         <tr>
-                          <td colSpan={4} className="py-8 text-center text-luxury-gray text-sm">
-                            No billing history found.
+                          <td colSpan={4} className="py-10 text-center text-luxury-gray text-sm">
+                            No billing history yet.
                           </td>
                         </tr>
                       ) : (
                         payments.map((payment) => (
                           <tr key={payment.id} className="border-b border-gold/5">
                             <td className="py-3 text-sm text-luxury-gray">
-                              {new Date(payment.createdAt).toLocaleDateString()}
+                              {new Date(payment.created_at || payment.createdAt).toLocaleDateString()}
                             </td>
                             <td className="py-3 text-sm text-white">
-                              {payment.submission?.plan?.name || "Service Payment"}
-                              {payment.submission?.title && ` - ${payment.submission.title}`}
+                              {payment.submission?.planName || "Service Payment"}
+                              {payment.submission?.title && ` — ${payment.submission.title}`}
                             </td>
                             <td className="py-3 text-sm text-gold font-medium">
-                              ${payment.amount.toFixed(2)}
+                              £{Number(payment.amount).toFixed(2)}
                             </td>
                             <td className="py-3 text-right">
                               <span className={cn(
                                 "px-2 py-0.5 text-xs rounded",
-                                payment.status === "completed" ? "bg-green-500/20 text-green-400" : "bg-brand-orange/20 text-brand-orange"
+                                payment.status === "completed" || payment.status === "paid"
+                                  ? "bg-green-500/20 text-green-400"
+                                  : "bg-brand-orange/20 text-brand-orange"
                               )}>
-                                {payment.status.charAt(0).toUpperCase() + payment.status.slice(1)}
+                                {payment.status?.charAt(0).toUpperCase() + payment.status?.slice(1)}
                               </span>
                             </td>
                           </tr>
@@ -323,12 +389,15 @@ export default function UserSettingsPage() {
             </motion.div>
           )}
 
-          {/* Simple notifications / security placeholders */}
-          {(activeSection === "notifications" || activeSection === "security") && (
-            <div className="py-20 text-center text-luxury-gray bg-luxury-dark rounded-xl border border-gold/10">
-              This feature is coming soon in the next update.
+          {/* ── Security / Notifications placeholders ── */}
+          {(activeSection === "security" || activeSection === "notifications") && (
+            <div className="py-24 text-center text-luxury-gray bg-luxury-dark rounded-xl border border-gold/10">
+              <Shield className="w-12 h-12 text-gold/30 mx-auto mb-4" />
+              <p className="text-white font-medium mb-1">Coming Soon</p>
+              <p className="text-sm">This feature will be available in the next update.</p>
             </div>
           )}
+
         </div>
       </div>
     </UserLayout>

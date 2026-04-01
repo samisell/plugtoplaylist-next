@@ -1,13 +1,13 @@
 import { NextResponse } from "next/server";
-import { createServerClient } from "@/lib/supabase/client";
+import { createAdminClient } from "@/lib/supabase/admin";
 
 export const dynamic = "force-dynamic";
 
 export async function GET() {
   try {
-    // USE THE ADMIN CLIENT (createServerClient) to bypass RLS recursion issues
+    // USE THE ADMIN CLIENT to bypass RLS recursion issues
     // This uses the service_role key which ignores database policies
-    const adminSupabase = createServerClient();
+    const adminSupabase = createAdminClient();
     
     // Primary plural 'plans' - confirmed by Postgres hint
     let { data: plans, error } = await adminSupabase

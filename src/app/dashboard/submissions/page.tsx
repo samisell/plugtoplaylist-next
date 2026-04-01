@@ -52,27 +52,39 @@ export default function UserSubmissionsPage() {
     async function fetchData() {
       try {
         setLoading(true);
-        const storedUser = localStorage.getItem("user");
-        if (!storedUser) {
-          setLoading(false);
-          return;
-        }
-        const user = JSON.parse(storedUser);
 
-        const res = await fetch(`/api/submissions?userId=${user.id}`);
+        // Try localStorage first, then fall back to session API
+        let userId: string | null = null;
+        let userProfile: any = null;
+        const storedUser = localStorage.getItem("user");
+        if (storedUser) {
+          userProfile = JSON.parse(storedUser);
+          userId = userProfile?.id;
+        }
+        // If no localStorage user, try getting session from server
+        if (!userId) {
+          const sessionRes = await fetch("/api/auth/session");
+          if (sessionRes.ok) {
+            const { user } = await sessionRes.json();
+            userId = user?.id;
+          }
+        }
+
+        if (!userId) { setLoading(false); return; }
+
+        const res = await fetch(`/api/submissions?userId=${userId}`);
         const { submissions: data } = await res.json();
         setSubmissions(data || []);
 
-        // Calculate stats
         const total = (data || []).length;
-        const active = (data || []).filter((s: any) => s.status === "active" || s.status === "in_progress").length;
+        const active = (data || []).filter((s: any) => s.status === "active").length;
         const completed = (data || []).filter((s: any) => s.status === "completed").length;
         
         setStats([
-          { title: "Total Submissions", value: total.toString(), icon: Music, color: "gold" as const },
-          { title: "Active Campaigns", value: active.toString(), icon: Play, color: "orange" as const },
-          { title: "Completed", value: completed.toString(), icon: CheckCircle2, color: "green" as const },
-          { title: "Total Units", value: total.toString(), icon: BarChart3, color: "blue" as const },
+          { title: "Total Submissions", value: total.toString(),     icon: Music,       color: "gold"   as const },
+          { title: "Active Campaigns",  value: active.toString(),     icon: Play,        color: "orange" as const },
+          { title: "Completed",         value: completed.toString(),  icon: CheckCircle2, color: "green" as const },
+          { title: "Pending Review",    value: (total - active - completed).toString(), icon: BarChart3, color: "blue" as const },
         ]);
       } catch (error) {
         console.error("Error fetching submissions:", error);
@@ -84,8 +96,8 @@ export default function UserSubmissionsPage() {
   }, []);
 
   const filteredSubmissions = submissions.filter((sub) => {
-    const title = sub.title || "";
-    const artist = sub.artist || "";
+    const title  = sub.track_title  || sub.title  || "";
+    const artist = sub.artist_name  || sub.artist || "";
     const matchesSearch =
       title.toLowerCase().includes(searchQuery.toLowerCase()) ||
       artist.toLowerCase().includes(searchQuery.toLowerCase());
@@ -108,7 +120,7 @@ export default function UserSubmissionsPage() {
       title="My Submissions"
       subtitle="Track and manage your music submissions"
       actions={
-        <Link href="/dashboard/submissions/new">
+        <Link href="/dashboard/submit">
           <GoldButton size="sm">
             <Plus className="w-4 h-4 mr-2" />
             New Submission
@@ -174,31 +186,36 @@ export default function UserSubmissionsPage() {
               onClick={() => setSelectedSubmission(submission)}
             >
               <div className="flex items-start gap-4 text-left">
-                {submission.coverImage ? (
-                  <img
-                    src={submission.coverImage}
-                    alt={submission.title}
-                    className="w-16 h-16 rounded-lg object-cover"
-                  />
-                ) : (
-                  <div className="w-16 h-16 rounded-lg bg-luxury-gray/20 flex items-center justify-center">
-                    <Music className="w-8 h-8 text-gold" />
-                  </div>
-                )}
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2 mb-1">
-                    <h3 className="font-semibold text-white truncate">{submission.title}</h3>
-                    <StatusBadge status={submission.status.toLowerCase() as any}>
-                      {submission.status.charAt(0).toUpperCase() + submission.status.slice(1)}
-                    </StatusBadge>
-                  </div>
-                  <p className="text-sm text-luxury-gray mb-2">{submission.artist}</p>
-                  <div className="flex items-center gap-3 text-xs">
-                    <span className="text-gold">{submission.plan?.name || "Generic"}</span>
-                    <span className="text-luxury-gray">•</span>
-                    <span className="text-luxury-gray">{new Date(submission.createdAt).toLocaleDateString()}</span>
-                  </div>
-                </div>
+                {(() => {
+                  const cover  = submission.cover_art_url || submission.coverImage;
+                  const title  = submission.track_title  || submission.title  || "Unknown Track";
+                  const artist = submission.artist_name  || submission.artist || "Unknown Artist";
+                  return (
+                    <>
+                      {cover ? (
+                        <img src={cover} alt={title} className="w-16 h-16 rounded-lg object-cover" />
+                      ) : (
+                        <div className="w-16 h-16 rounded-lg bg-luxury-gray/20 flex items-center justify-center">
+                          <Music className="w-8 h-8 text-gold" />
+                        </div>
+                      )}
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 mb-1">
+                          <h3 className="font-semibold text-white truncate">{title}</h3>
+                          <StatusBadge status={submission.status?.toLowerCase() as any}>
+                            {submission.status?.charAt(0).toUpperCase() + submission.status?.slice(1)}
+                          </StatusBadge>
+                        </div>
+                        <p className="text-sm text-luxury-gray mb-2">{artist}</p>
+                        <div className="flex items-center gap-3 text-xs">
+                          <span className="text-gold">{submission.plan?.name || "Standard"}</span>
+                          <span className="text-luxury-gray">•</span>
+                          <span className="text-luxury-gray">{new Date(submission.created_at || submission.createdAt).toLocaleDateString()}</span>
+                        </div>
+                      </div>
+                    </>
+                  );
+                })()}
                 <div className="text-right">
                   {(submission.status === "active" || submission.status === "in_progress") && (
                     <>
@@ -245,7 +262,7 @@ export default function UserSubmissionsPage() {
           </div>
           <h3 className="text-lg font-medium text-white mb-2">No submissions found</h3>
           <p className="text-luxury-gray mb-6">Try adjusting your search or filter criteria</p>
-          <Link href="/dashboard/submissions/new">
+          <Link href="/dashboard/submit">
             <GoldButton>
               <Plus className="w-4 h-4 mr-2" />
               Submit Your First Track
@@ -287,8 +304,10 @@ export default function UserSubmissionsPage() {
                       {selectedSubmission.status.charAt(0).toUpperCase() + selectedSubmission.status.slice(1)}
                     </StatusBadge>
                   </div>
-                  <h2 className="text-2xl font-bold text-white">{selectedSubmission.title}</h2>
-                  <p className="text-luxury-gray">{selectedSubmission.artist}</p>
+                  <h2 className="text-2xl font-bold text-white">
+                    {selectedSubmission.track_title || selectedSubmission.title}
+                  </h2>
+                  <p className="text-luxury-gray">{selectedSubmission.artist_name || selectedSubmission.artist}</p>
                 </div>
               </div>
 
@@ -317,15 +336,24 @@ export default function UserSubmissionsPage() {
                   </div>
                   <div className="flex justify-between py-2 border-b border-gold/5">
                     <span className="text-luxury-gray text-sm">Submitted</span>
-                    <span className="text-white text-sm">{new Date(selectedSubmission.createdAt).toLocaleDateString()}</span>
+                    <span className="text-white text-sm">
+                      {new Date(selectedSubmission.created_at || selectedSubmission.createdAt).toLocaleDateString()}
+                    </span>
                   </div>
                 </div>
 
                 {/* Actions */}
                 <div className="flex gap-3">
-                  <GoldButton variant="outline" className="flex-1" onClick={() => window.open(selectedSubmission.trackUrl, '_blank')}>
+                  <GoldButton
+                    variant="outline"
+                    className="flex-1"
+                    onClick={() => {
+                      const url = selectedSubmission.spotify_url || selectedSubmission.youtube_url || selectedSubmission.trackUrl;
+                      if (url) window.open(url, '_blank');
+                    }}
+                  >
                     <ExternalLink className="w-4 h-4 mr-2" />
-                    View on {selectedSubmission.trackType === "spotify" ? "Spotify" : "YouTube"}
+                    View Track
                   </GoldButton>
                 </div>
               </div>

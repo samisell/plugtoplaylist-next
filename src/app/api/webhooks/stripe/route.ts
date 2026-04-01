@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createServerClient } from "@/lib/supabase/client";
+import { createAdminClient } from "@/lib/supabase/admin";
 import { sendPaymentConfirmationEmail, sendNewPaymentAdminNotification } from "@/lib/email";
 import Stripe from "stripe";
 
@@ -9,7 +9,7 @@ const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!);
 const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET!;
 
 export async function POST(request: NextRequest) {
-  const adminClient = createServerClient();
+  const adminClient = createAdminClient();
   const signature = request.headers.get("stripe-signature");
   const body = await request.text();
 

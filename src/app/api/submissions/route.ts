@@ -1,12 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
-import { supabase, createServerClient } from "@/lib/supabase/client";
+import { createAdminClient } from '@/lib/supabase/admin';
 import { sendSubmissionConfirmationEmail, sendNewSubmissionAdminNotification } from "@/lib/email";
 import { getTrackMetadata } from "@/lib/metadata";
 import Stripe from "stripe";
 
 export const dynamic = "force-dynamic";
 
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!);
 
 // GET - List submissions
 export async function GET(request: NextRequest) {
@@ -16,15 +15,11 @@ export async function GET(request: NextRequest) {
     const status = searchParams.get("status");
 
     // Use Admin Client
-    const adminSupabase = createServerClient();
+    const adminSupabase = createAdminClient() as any;
 
     let query = adminSupabase
-      .from("submissions")
-      .select(`
-        *,
-        plan:plans (*),
-        payment:payments (*)
-      `)
+      .from("submissions" as any)
+      .select(`*, plan:plans (*), payment:payments (*)`)
       .order("created_at", { ascending: false });
     
     if (userId) query = query.eq("user_id", userId);
@@ -52,6 +47,7 @@ export async function GET(request: NextRequest) {
 // POST - Create a new submission
 export async function POST(request: NextRequest) {
   try {
+    const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!);
     console.log("Submission attempt started (SnakeCase Sync)...");
     const body = await request.json();
     
@@ -117,7 +113,7 @@ export async function POST(request: NextRequest) {
         }
     };
 
-    const adminSupabase = createServerClient();
+    const adminSupabase = createAdminClient();
 
     // Ensure the user exists in the database to prevent foreign key errors (e.g., stale local storage UUIDs)
     if (userId) {
@@ -224,10 +220,10 @@ export async function PATCH(request: NextRequest) {
     const { id, status } = body;
     if (!id) return NextResponse.json({ error: "ID required" }, { status: 400 });
 
-    const adminSupabase = createServerClient();
+    const adminSupabase = createAdminClient() as any;
     const { data: submission, error } = await adminSupabase
-      .from("submissions")
-      .update({ status })
+      .from("submissions" as any)
+      .update({ status } as any)
       .eq("id", id)
       .select()
       .single();

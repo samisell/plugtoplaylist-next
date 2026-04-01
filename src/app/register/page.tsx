@@ -3,10 +3,19 @@
 import { useState } from "react";
 import { motion } from "framer-motion";
 import Link from "next/link";
-import { Mail, Lock, User, Eye, EyeOff, ArrowLeft, Music, Check } from "lucide-react";
+import { useRouter } from "next/navigation";
+import { Mail, Lock, User, Eye, EyeOff, ArrowLeft, Music, Check, Loader2 } from "lucide-react";
 import { GoldButton, GlowCard } from "@/components/shared";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import {
+  InputOTP,
+  InputOTPGroup,
+  InputOTPSeparator,
+  InputOTPSlot,
+} from "@/components/ui/input-otp";
+import { useToast } from "@/hooks/use-toast";
+import { createClient } from "@/app/api/auth/client";
 
 const benefits = [
   "Track all your submissions in one place",
@@ -16,26 +25,116 @@ const benefits = [
 ];
 
 export default function RegisterPage() {
+  const supabase = createClient();
   const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
+  const [isOtpLoading, setIsOtpLoading] = useState(false);
+  const { toast } = useToast();
+  const router = useRouter();
   const [formData, setFormData] = useState({
     name: "",
     email: "",
     password: "",
     confirmPassword: "",
   });
+  const [showOtpForm, setShowOtpForm] = useState(false);
+  const [otp, setOtp] = useState("");
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (formData.password !== formData.confirmPassword) {
-      alert("Passwords do not match");
+      toast({
+        title: "Error",
+        description: "Passwords do not match",
+        variant: "destructive",
+      });
       return;
     }
     setIsLoading(true);
-    await new Promise((resolve) => setTimeout(resolve, 1500));
-    setIsLoading(false);
-    // Redirect to dashboard
-    window.location.href = "/dashboard";
+
+    try {
+      const response = await fetch("/api/auth", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          action: "register",
+          email: formData.email,
+          password: formData.password,
+          name: formData.name,
+        }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || "Registration failed");
+      }
+
+      toast({
+        title: "Registration successful",
+        description: "Please check your email for the verification code.",
+      });
+      setShowOtpForm(true);
+    } catch (error: any) {
+      toast({
+        title: "Registration Failed",
+        description: error.message,
+        variant: "destructive",
+      });
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleOtpSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setIsOtpLoading(true);
+
+    try {
+      const response = await fetch("/api/auth", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          action: "verify",
+          email: formData.email,
+          token: otp,
+          type: "signup",
+        }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || "Verification failed");
+      }
+
+      toast({
+        title: "Account verified successfully",
+        description: "Welcome to PlugToPlaylist!",
+      });
+      router.push("/dashboard");
+    } catch (error: any) {
+      toast({
+        title: "Verification Failed",
+        description: error.message,
+        variant: "destructive",
+      });
+    } finally {
+      setIsOtpLoading(false);
+    }
+  };
+
+  const handleSocialLogin = async (provider: "google" | "github") => {
+    await supabase.auth.signInWithOAuth({
+      provider,
+      options: {
+        redirectTo: `${window.location.origin}/auth/callback`,
+      },
+    });
   };
 
   return (
@@ -135,102 +234,150 @@ export default function RegisterPage() {
           >
             <GlowCard variant="premium" hover={false} className="p-6 md:p-8">
               <div className="mb-6">
-                <h2 className="text-2xl font-bold text-white mb-2">Create Account</h2>
-                <p className="text-sm text-luxury-gray">Join thousands of artists promoting their music</p>
+                <h2 className="text-2xl font-bold text-white mb-2">
+                  {showOtpForm ? "Verify Your Email" : "Create Account"}
+                </h2>
+                <p className="text-sm text-luxury-gray">
+                  {showOtpForm 
+                    ? "Enter the 6-digit code sent to your email" 
+                    : "Join thousands of artists promoting their music"
+                  }
+                </p>
               </div>
 
-              {/* Form */}
-              <form onSubmit={handleSubmit} className="space-y-4">
-                <div className="space-y-2">
-                  <Label htmlFor="name" className="text-white">Full Name</Label>
-                  <div className="relative">
-                    <User className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-luxury-gray" />
-                    <Input
-                      id="name"
-                      type="text"
-                      placeholder="Your name"
-                      value={formData.name}
-                      onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                      className="bg-luxury-lighter border-gold/20 focus:border-gold h-12 pl-10 text-white placeholder:text-luxury-gray"
-                      required
-                    />
-                  </div>
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="email" className="text-white">Email</Label>
-                  <div className="relative">
-                    <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-luxury-gray" />
-                    <Input
-                      id="email"
-                      type="email"
-                      placeholder="your@email.com"
-                      value={formData.email}
-                      onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-                      className="bg-luxury-lighter border-gold/20 focus:border-gold h-12 pl-10 text-white placeholder:text-luxury-gray"
-                      required
-                    />
-                  </div>
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="password" className="text-white">Password</Label>
-                  <div className="relative">
-                    <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-luxury-gray" />
-                    <Input
-                      id="password"
-                      type={showPassword ? "text" : "password"}
-                      placeholder="••••••••"
-                      value={formData.password}
-                      onChange={(e) => setFormData({ ...formData, password: e.target.value })}
-                      className="bg-luxury-lighter border-gold/20 focus:border-gold h-12 pl-10 pr-10 text-white placeholder:text-luxury-gray"
-                      required
-                    />
-                    <button
-                      type="button"
-                      onClick={() => setShowPassword(!showPassword)}
-                      className="absolute right-3 top-1/2 -translate-y-1/2 text-luxury-gray hover:text-white"
+              {showOtpForm ? (
+                /* OTP Verification Form */
+                <form onSubmit={handleOtpSubmit} className="space-y-6">
+                  <div className="space-y-2">
+                    <Label htmlFor="otp" className="text-white">Verification Code</Label>
+                    <InputOTP
+                      maxLength={8}
+                      value={otp}
+                      onChange={(value) => setOtp(value)}
+                      id="otp"
                     >
-                      {showPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
-                    </button>
+                      <InputOTPGroup>
+                        <InputOTPSlot index={0} />
+                        <InputOTPSlot index={1} />
+                        <InputOTPSlot index={2} />
+                        <InputOTPSlot index={3} />
+                      </InputOTPGroup>
+                      <InputOTPSeparator />
+                      <InputOTPGroup>
+                        <InputOTPSlot index={4} />
+                        <InputOTPSlot index={5} />
+                        <InputOTPSlot index={6} />
+                        <InputOTPSlot index={7} />
+                      </InputOTPGroup>
+                    </InputOTP>
                   </div>
-                </div>
 
-                <div className="space-y-2">
-                  <Label htmlFor="confirmPassword" className="text-white">Confirm Password</Label>
-                  <div className="relative">
-                    <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-luxury-gray" />
-                    <Input
-                      id="confirmPassword"
-                      type="password"
-                      placeholder="••••••••"
-                      value={formData.confirmPassword}
-                      onChange={(e) => setFormData({ ...formData, confirmPassword: e.target.value })}
-                      className="bg-luxury-lighter border-gold/20 focus:border-gold h-12 pl-10 text-white placeholder:text-luxury-gray"
+                  <GoldButton type="submit" className="w-full" size="lg" loading={isOtpLoading}>
+                    {isOtpLoading ? "Verifying..." : "Verify Account"}
+                  </GoldButton>
+
+                  <button
+                    type="button"
+                    onClick={() => setShowOtpForm(false)}
+                    className="w-full text-sm text-luxury-gray hover:text-gold transition-colors"
+                  >
+                    Back to registration
+                  </button>
+                </form>
+              ) : (
+                /* Registration Form */
+                <form onSubmit={handleSubmit} className="space-y-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="name" className="text-white">Full Name</Label>
+                    <div className="relative">
+                      <User className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-luxury-gray" />
+                      <Input
+                        id="name"
+                        type="text"
+                        placeholder="Your name"
+                        value={formData.name}
+                        onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                        className="bg-luxury-lighter border-gold/20 focus:border-gold h-12 pl-10 text-white placeholder:text-luxury-gray"
+                        required
+                      />
+                    </div>
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="email" className="text-white">Email</Label>
+                    <div className="relative">
+                      <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-luxury-gray" />
+                      <Input
+                        id="email"
+                        type="email"
+                        placeholder="your@email.com"
+                        value={formData.email}
+                        onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+                        className="bg-luxury-lighter border-gold/20 focus:border-gold h-12 pl-10 text-white placeholder:text-luxury-gray"
+                        required
+                      />
+                    </div>
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="password" className="text-white">Password</Label>
+                    <div className="relative">
+                      <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-luxury-gray" />
+                      <Input
+                        id="password"
+                        type={showPassword ? "text" : "password"}
+                        placeholder="ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¢"
+                        value={formData.password}
+                        onChange={(e) => setFormData({ ...formData, password: e.target.value })}
+                        className="bg-luxury-lighter border-gold/20 focus:border-gold h-12 pl-10 pr-10 text-white placeholder:text-luxury-gray"
+                        required
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowPassword(!showPassword)}
+                        className="absolute right-3 top-1/2 -translate-y-1/2 text-luxury-gray hover:text-white"
+                      >
+                        {showPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="confirmPassword" className="text-white">Confirm Password</Label>
+                    <div className="relative">
+                      <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-luxury-gray" />
+                      <Input
+                        id="confirmPassword"
+                        type="password"
+                        placeholder="ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¢"
+                        value={formData.confirmPassword}
+                        onChange={(e) => setFormData({ ...formData, confirmPassword: e.target.value })}
+                        className="bg-luxury-lighter border-gold/20 focus:border-gold h-12 pl-10 text-white placeholder:text-luxury-gray"
+                        required
+                      />
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="checkbox"
+                      id="terms"
+                      className="w-4 h-4 rounded border-gold/30 bg-luxury-lighter text-gold focus:ring-gold/30"
                       required
                     />
+                    <label htmlFor="terms" className="text-sm text-luxury-gray">
+                      I agree to the{" "}
+                      <Link href="/terms" className="text-gold hover:text-brand-orange">Terms of Service</Link>
+                      {" "}and{" "}
+                      <Link href="/privacy" className="text-gold hover:text-brand-orange">Privacy Policy</Link>
+                    </label>
                   </div>
-                </div>
 
-                <div className="flex items-center gap-2">
-                  <input
-                    type="checkbox"
-                    id="terms"
-                    className="w-4 h-4 rounded border-gold/30 bg-luxury-lighter text-gold focus:ring-gold/30"
-                    required
-                  />
-                  <label htmlFor="terms" className="text-sm text-luxury-gray">
-                    I agree to the{" "}
-                    <Link href="/terms" className="text-gold hover:text-brand-orange">Terms of Service</Link>
-                    {" "}and{" "}
-                    <Link href="/privacy" className="text-gold hover:text-brand-orange">Privacy Policy</Link>
-                  </label>
-                </div>
-
-                <GoldButton type="submit" className="w-full" size="lg" loading={isLoading}>
-                  {isLoading ? "Creating Account..." : "Create Account"}
-                </GoldButton>
-              </form>
+                  <GoldButton type="submit" className="w-full" size="lg" loading={isLoading}>
+                    {isLoading ? "Creating Account..." : "Create Account"}
+                  </GoldButton>
+                </form>
+              )}
 
               {/* Divider */}
               <div className="relative my-6">
@@ -244,7 +391,11 @@ export default function RegisterPage() {
 
               {/* Social Login */}
               <div className="grid grid-cols-2 gap-3">
-                <button className="flex items-center justify-center gap-2 px-4 py-3 rounded-lg border border-gold/20 bg-luxury-lighter hover:border-gold/40 hover:bg-luxury-lighter/50 transition-colors text-white">
+                <button 
+                  onClick={() => handleSocialLogin("google")}
+                  type="button"
+                  className="flex items-center justify-center gap-2 px-4 py-3 rounded-lg border border-gold/20 bg-luxury-lighter hover:border-gold/40 hover:bg-luxury-lighter/50 transition-colors text-white"
+                >
                   <svg className="w-5 h-5" viewBox="0 0 24 24">
                     <path fill="currentColor" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
                     <path fill="currentColor" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
@@ -253,7 +404,11 @@ export default function RegisterPage() {
                   </svg>
                   <span className="text-sm">Google</span>
                 </button>
-                <button className="flex items-center justify-center gap-2 px-4 py-3 rounded-lg border border-gold/20 bg-luxury-lighter hover:border-gold/40 hover:bg-luxury-lighter/50 transition-colors text-white">
+                <button 
+                  onClick={() => handleSocialLogin("github")}
+                  type="button"
+                  className="flex items-center justify-center gap-2 px-4 py-3 rounded-lg border border-gold/20 bg-luxury-lighter hover:border-gold/40 hover:bg-luxury-lighter/50 transition-colors text-white"
+                >
                   <svg className="w-5 h-5" viewBox="0 0 24 24" fill="currentColor">
                     <path d="M12 0C5.373 0 0 5.373 0 12c0 5.302 3.438 9.8 8.207 11.387.6.11.82-.26.82-.577v-2.234c-3.338.726-4.042-1.61-4.042-1.61-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.838 1.236 1.838 1.236 1.07 1.835 2.809 1.305 3.495.998.108-.776.419-1.305.762-1.605-2.665-.303-5.467-1.333-5.467-5.93 0-1.31.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23A11.509 11.509 0 0112 5.803c1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.61-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.218.694.825.576C20.565 21.796 24 17.3 24 12c0-6.627-5.373-12-12-12z"/>
                   </svg>

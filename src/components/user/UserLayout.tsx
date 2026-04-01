@@ -40,9 +40,10 @@ interface UserLayoutProps {
   title: string;
   subtitle?: string;
   actions?: ReactNode;
+  user?: any;
 }
 
-export function UserLayout({ children, title, subtitle, actions }: UserLayoutProps) {
+export function UserLayout({ children, title, subtitle, actions, user }: UserLayoutProps) {
   const pathname = usePathname();
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
@@ -111,7 +112,7 @@ export function UserLayout({ children, title, subtitle, actions }: UserLayoutPro
 
         {/* Quick Actions */}
         <div className="p-4 border-t border-gold/10">
-          <Link href="/submit" onClick={() => setSidebarOpen(false)}>
+          <Link href="/dashboard/submit" onClick={() => setSidebarOpen(false)}>
             <GoldButton className="w-full">
               <Plus className="w-4 h-4 mr-2" />
               New Submission
@@ -126,8 +127,8 @@ export function UserLayout({ children, title, subtitle, actions }: UserLayoutPro
               <User className="w-5 h-5 text-gold" />
             </div>
             <div className="flex-1 min-w-0">
-              <div className="text-sm font-medium text-white truncate">Alex Rivera</div>
-              <div className="text-xs text-luxury-gray truncate">alex@email.com</div>
+              <div className="text-sm font-medium text-white truncate">{user?.display_name || user?.name || "Guest User"}</div>
+              <div className="text-xs text-luxury-gray truncate">{user?.email || "guest@email.com"}</div>
             </div>
           </div>
           
@@ -138,7 +139,7 @@ export function UserLayout({ children, title, subtitle, actions }: UserLayoutPro
               <span className="text-xs font-medium text-white">Referral Bonus</span>
             </div>
             <div className="text-xs text-luxury-gray mb-1">Your code</div>
-            <div className="text-lg font-mono text-gold">ALEX2024</div>
+            <div className="text-lg font-mono text-gold uppercase">{user?.metadata?.referral_code || user?.referralCode || "WELCOME24"}</div>
           </div>
 
           <Link
@@ -182,7 +183,7 @@ export function UserLayout({ children, title, subtitle, actions }: UserLayoutPro
               </div>
 
               {/* Quick Submit Button */}
-              <Link href="/submit" className="hidden sm:block">
+              <Link href="/dashboard/submit" className="hidden sm:block">
                 <GoldButton size="sm">
                   <Plus className="w-4 h-4 mr-1" />
                   Submit

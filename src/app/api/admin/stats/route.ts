@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createAdminClient } from "@/lib/supabase/client";
+import { createAdminClient } from '@/lib/supabase/admin';
 
 export const dynamic = "force-dynamic";
 
@@ -56,7 +56,7 @@ export async function GET(request: NextRequest) {
         paidPayments = altPayments;
     }
 
-    const totalRevenue = paidPayments?.reduce((sum, p) => sum + (p.amount || 0), 0) || 0;
+    const totalRevenue = paidPayments?.reduce((sum, p: any) => sum + (p.amount || 0), 0) || 0;
 
     // Get recent submissions
     let { data: recentSubmissions, error: recentError } = await adminClient
