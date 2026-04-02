@@ -39,17 +39,30 @@ export interface GoldButtonProps
   asChild?: boolean;
   loading?: boolean;
   icon?: React.ReactNode;
+          onClick?: React.MouseEventHandler<HTMLButtonElement>;
+  onClick?: React.MouseEventHandler<HTMLButtonElement>;
 }
 
 const GoldButton = React.forwardRef<HTMLButtonElement, GoldButtonProps>(
-  ({ className, variant, size, asChild = false, loading, icon, children, disabled, ...props }, ref) => {
+  ({ className, variant, size, asChild = false, loading, icon, children, disabled, onClick, ...props }, ref) => {
     const Comp = asChild ? Slot : "button";
-    
+    const [isClicked, setIsClicked] = React.useState(false);
+
+    const handleClick = (e: React.MouseEvent<HTMLButtonElement>) => {
+      if (isClicked) return;
+      setIsClicked(true);
+      if (onClick) {
+        onClick(e);
+      }
+      setTimeout(() => setIsClicked(false), 1000);
+    };
+
     return (
       <Comp
         className={cn(goldButtonVariants({ variant, size, className }))}
         ref={ref}
-        disabled={disabled || loading}
+        disabled={disabled || loading || isClicked}
+        onClick={handleClick}
         {...props}
       >
         {loading ? (
@@ -68,15 +81,27 @@ GoldButton.displayName = "GoldButton";
 
 // Animated version
 const GoldButtonAnimated = React.forwardRef<HTMLButtonElement, GoldButtonProps>(
-  ({ className, variant, size, asChild, loading, icon, children, disabled, ...props }, ref) => {
+  ({ className, variant, size, asChild = false, loading, icon, children, disabled, onClick, ...props }, ref) => {
+    const [isClicked, setIsClicked] = React.useState(false);
+
+    const handleClick = (e: React.MouseEvent<HTMLButtonElement>) => {
+      if (disabled || loading || isClicked) return;
+      setIsClicked(true);
+      if (onClick) {
+        onClick(e);
+      }
+      setTimeout(() => setIsClicked(false), 1000); // Reset after 1 second to allow re-submission on error
+    };
+
     return (
       <motion.button
-        whileHover={{ scale: disabled || loading ? 1 : 1.02 }}
-        whileTap={{ scale: disabled || loading ? 1 : 0.98 }}
+        whileHover={{ scale: disabled || loading || isClicked ? 1 : 1.02 }}
+        whileTap={{ scale: disabled || loading || isClicked ? 1 : 0.98 }}
         className={cn(goldButtonVariants({ variant, size, className }))}
         ref={ref}
-        disabled={disabled || loading}
-        {...props}
+        disabled={disabled || loading || isClicked}
+        onClick={handleClick}
+        {...(props as any)} // Use type assertion to bypass the type conflict
       >
         {loading ? (
           <Loader2 className="w-4 h-4 animate-spin" />

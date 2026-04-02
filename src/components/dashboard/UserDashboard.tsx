@@ -42,7 +42,7 @@ export function UserDashboard() {
     { title: "Total Submissions", value: "0", icon: Music, color: "gold" },
     { title: "Active Campaigns", value: "0", icon: TrendingUp, color: "orange" },
     { title: "Total Streams", value: "0", icon: BarChart3, color: "gold" },
-    { title: "Wallet Balance", value: "$0", icon: DollarSign, color: "orange" },
+    { title: "Wallet Balance", value: "£0", icon: DollarSign, color: "orange" },
   ]);
 
   useEffect(() => {
@@ -75,7 +75,7 @@ export function UserDashboard() {
           { title: "Total Submissions", value: (subs || []).length.toString(), icon: Music, color: "gold" },
           { title: "Active Campaigns", value: activeCount.toString(), icon: TrendingUp, color: "orange" },
           { title: "Total Streams", value: "0", icon: BarChart3, color: "gold" }, // Placeholder for now
-          { title: "Wallet Balance", value: `$${profile?.walletBalance || 0}`, icon: DollarSign, color: "orange" },
+          { title: "Wallet Balance", value: `£${profile?.walletBalance || 0}`, icon: DollarSign, color: "orange" },
         ]);
 
       } catch (error) {
