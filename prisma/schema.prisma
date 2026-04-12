@@ -6,9 +6,8 @@ generator client {
 }
 
 datasource db {
-  provider  = "postgresql"
+  provider  = "mysql"
   url       = env("DATABASE_URL")
-  directUrl = env("DIRECT_URL")
 }
 
 model User {
@@ -161,4 +160,69 @@ model EmailTemplate {
   textBody  String   @db.Text
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+}
+
+model Contact {
+  id          String   @id @default(cuid())
+  email       String   // Contact email
+  name        String   // Contact name
+  subject     String   // Message subject
+  message     String   @db.Text // Full message content
+  status      String   @default("new") // "new", "read", "responded", "closed"
+  notes       String?  @db.Text // Admin notes
+  respondedAt DateTime?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  
+  // Indexes for querying
+  @@index([email])
+  @@index([status])
+  @@index([createdAt])
+}
+
+model SystemSettings {
+  id                          String   @id @default("system") // Single row per system
+  
+  // General Settings
+  siteName                    String   @default("PlugToPlaylist")
+  siteUrl                     String   @default("https://plugtoplaylist.com")
+  supportEmail                String   @default("support@plugtoplaylist.com")
+  supportPhone                String   @default("+1 (555) 123-4567")
+  maintenanceMode             Boolean  @default(false)
+  
+  // Feature Flags
+  guestSubmissionsEnabled     Boolean  @default(true)
+  referralSystemEnabled       Boolean  @default(true)
+  couponCodesEnabled          Boolean  @default(false)
+  aiPlanSuggestionEnabled     Boolean  @default(true)
+  
+  // Payment Settings
+  testModeEnabled             Boolean  @default(false)
+  autoRefundFailedCampaigns   Boolean  @default(true)
+  paystackPublicKey           String?
+  paystackSecretKey           String?
+  flutterwavePublicKey        String?
+  flutterwaveSecretKey        String?
+  
+  // Email Settings
+  smtpHost                    String   @default("smtp.sendgrid.net")
+  smtpPort                    Int      @default(587)
+  smtpUsername                String   @default("apikey")
+  smtpPassword                String?
+  emailNotificationsEnabled   Boolean  @default(true)
+  newUserRegistrationEmail    Boolean  @default(true)
+  newSubmissionEmail          Boolean  @default(true)
+  paymentReceivedEmail        Boolean  @default(true)
+  campaignStartedEmail        Boolean  @default(true)
+  campaignCompletedEmail      Boolean  @default(true)
+  refundProcessedEmail        Boolean  @default(false)
+  
+  // Third-party Integrations
+  spotifyApiConnected         Boolean  @default(true)
+  youtubeApiConnected         Boolean  @default(true)
+  sendgridConnected           Boolean  @default(false)
+  twilioConnected             Boolean  @default(false)
+  
+  createdAt                   DateTime @default(now())
+  updatedAt                   DateTime @updatedAt
 }

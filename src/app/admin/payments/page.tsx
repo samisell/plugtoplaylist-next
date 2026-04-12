@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   CreditCard,
@@ -20,6 +20,7 @@ import {
   Calendar,
   ArrowUpRight,
   ArrowDownRight,
+  Loader2,
 } from "lucide-react";
 import { AdminLayout, StatCard, DataTable, FilterBadge } from "@/components/admin/AdminLayout";
 import { GoldButton, StatusBadge } from "@/components/shared";
@@ -27,87 +28,19 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
-const stats = [
-  { title: "Total Revenue", value: "$24,850", change: "+23.1%", isPositive: true, icon: DollarSign, color: "gold" as const },
-  { title: "Successful Payments", value: "156", change: "+12", isPositive: true, icon: CheckCircle2, color: "green" as const },
-  { title: "Pending Payments", value: "8", change: "-3", isPositive: true, icon: Clock, color: "orange" as const },
-  { title: "Refunds", value: "$420", change: "+2.5%", isPositive: false, icon: RefreshCw, color: "blue" as const },
-];
-
-const mockPayments = [
-  {
-    id: "pay_1",
-    transactionId: "TXN-2024012101",
-    user: "alex@email.com",
-    amount: 149,
-    currency: "USD",
-    status: "paid",
-    method: "Paystack",
-    plan: "Premium",
-    track: "Blinding Lights",
-    createdAt: "2024-01-21 14:32:00",
-  },
-  {
-    id: "pay_2",
-    transactionId: "TXN-2024012002",
-    user: "maya@email.com",
-    amount: 349,
-    currency: "USD",
-    status: "paid",
-    method: "Flutterwave",
-    plan: "Professional",
-    track: "Shape of You",
-    createdAt: "2024-01-20 10:15:00",
-  },
-  {
-    id: "pay_3",
-    transactionId: "TXN-2024011903",
-    user: "jordan@email.com",
-    amount: 49,
-    currency: "USD",
-    status: "pending",
-    method: "Paystack",
-    plan: "Starter",
-    track: "Levitating",
-    createdAt: "2024-01-19 16:45:00",
-  },
-  {
-    id: "pay_4",
-    transactionId: "TXN-2024011804",
-    user: "nina@email.com",
-    amount: 149,
-    currency: "USD",
-    status: "failed",
-    method: "Flutterwave",
-    plan: "Premium",
-    track: "Stay",
-    createdAt: "2024-01-18 09:20:00",
-  },
-  {
-    id: "pay_5",
-    transactionId: "TXN-2024011705",
-    user: "marcus@email.com",
-    amount: 349,
-    currency: "USD",
-    status: "refunded",
-    method: "Paystack",
-    plan: "Professional",
-    track: "Peaches",
-    createdAt: "2024-01-17 11:30:00",
-  },
-  {
-    id: "pay_6",
-    transactionId: "TXN-2024011606",
-    user: "sophie@email.com",
-    amount: 49,
-    currency: "USD",
-    status: "paid",
-    method: "Paystack",
-    plan: "Starter",
-    track: "Good 4 U",
-    createdAt: "2024-01-16 14:00:00",
-  },
-];
+interface Payment {
+  id: string;
+  transactionId: string;
+  user: string;
+  userName: string;
+  track: string;
+  plan: string;
+  amount: number;
+  currency: string;
+  status: "paid" | "pending" | "failed" | "refunded";
+  method: string;
+  createdAt: string;
+}
 
 const statusFilters = [
   { label: "All", value: "all" },
@@ -120,16 +53,156 @@ const statusFilters = [
 export default function AdminPaymentsPage() {
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
-  const [selectedPayment, setSelectedPayment] = useState<typeof mockPayments[0] | null>(null);
-
-  const filteredPayments = mockPayments.filter((payment) => {
-    const matchesSearch =
-      payment.user.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      payment.transactionId.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      payment.track.toLowerCase().includes(searchQuery.toLowerCase());
-    const matchesStatus = statusFilter === "all" || payment.status === statusFilter;
-    return matchesSearch && matchesStatus;
+  const [selectedPayment, setSelectedPayment] = useState<Payment | null>(null);
+  const [payments, setPayments] = useState<Payment[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [stats, setStats] = useState({
+    totalRevenue: 0,
+    paidPayments: 0,
+    pendingPayments: 0,
+    totalRefunds: 0,
   });
+  const [pagination, setPagination] = useState({
+    page: 1,
+    limit: 20,
+    total: 0,
+    pages: 0,
+  });
+
+  useEffect(() => {
+    fetchPayments();
+  }, [statusFilter, pagination.page]);
+
+  const fetchPayments = async () => {
+    try {
+      setLoading(true);
+      const params = new URLSearchParams({
+        page: pagination.page.toString(),
+        limit: pagination.limit.toString(),
+        status: statusFilter,
+        ...(searchQuery && { search: searchQuery }),
+      });
+
+      const response = await fetch(`/api/admin/payments?${params}`);
+      const data = await response.json();
+
+      if (response.ok) {
+        setPayments(data.payments);
+        setPagination(data.pagination);
+        setStats(data.stats);
+      }
+    } catch (error) {
+      console.error("Failed to fetch payments:", error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleApprovePayment = async () => {
+    if (!selectedPayment) return;
+
+    try {
+      const response = await fetch(`/api/admin/payments/${selectedPayment.id}/approve`, {
+        method: "POST",
+      });
+
+      if (response.ok) {
+        // Update the payment status locally
+        setSelectedPayment({
+          ...selectedPayment,
+          status: "paid",
+        });
+        // Refresh the payments list
+        await fetchPayments();
+      }
+    } catch (error) {
+      console.error("Failed to approve payment:", error);
+    }
+  };
+
+  const handleRejectPayment = async () => {
+    if (!selectedPayment) return;
+
+    try {
+      const response = await fetch(`/api/admin/payments/${selectedPayment.id}/reject`, {
+        method: "POST",
+      });
+
+      if (response.ok) {
+        // Update the payment status locally
+        setSelectedPayment({
+          ...selectedPayment,
+          status: "failed",
+        });
+        // Refresh the payments list
+        await fetchPayments();
+      }
+    } catch (error) {
+      console.error("Failed to reject payment:", error);
+    }
+  };
+
+  const handleRefundPayment = async () => {
+    if (!selectedPayment) return;
+
+    try {
+      const response = await fetch(`/api/admin/payments/${selectedPayment.id}/refund`, {
+        method: "POST",
+      });
+
+      if (response.ok) {
+        // Update the payment status locally
+        setSelectedPayment({
+          ...selectedPayment,
+          status: "refunded",
+        });
+        // Refresh the payments list
+        await fetchPayments();
+      }
+    } catch (error) {
+      console.error("Failed to refund payment:", error);
+    }
+  };
+
+  const handleSearch = (query: string) => {
+    setSearchQuery(query);
+    setPagination({ ...pagination, page: 1 });
+  };
+
+  const formattedStats = [
+    {
+      title: "Total Revenue",
+      value: `£${stats.totalRevenue.toLocaleString()}`,
+      change: "+23.1%",
+      isPositive: true,
+      icon: DollarSign,
+      color: "gold" as const,
+    },
+    {
+      title: "Successful Payments",
+      value: stats.paidPayments.toString(),
+      change: "+12",
+      isPositive: true,
+      icon: CheckCircle2,
+      color: "green" as const,
+    },
+    {
+      title: "Pending Payments",
+      value: stats.pendingPayments.toString(),
+      change: "-3",
+      isPositive: true,
+      icon: Clock,
+      color: "orange" as const,
+    },
+    {
+      title: "Refunds",
+      value: `£${stats.totalRefunds.toLocaleString()}`,
+      change: "+2.5%",
+      isPositive: false,
+      icon: RefreshCw,
+      color: "blue" as const,
+    },
+  ];
 
   const getPaymentStatusBadge = (status: string) => {
     const statusMap: Record<string, { bg: string; text: string }> = {
@@ -172,7 +245,7 @@ export default function AdminPaymentsPage() {
     {
       key: "amount",
       label: "Amount",
-      render: (value: unknown) => <span className="font-medium text-white">${String(value)}</span>,
+      render: (value: unknown) => <span className="font-medium text-white">£{String((value as number).toLocaleString())}</span>,
     },
     {
       key: "method",
@@ -187,12 +260,15 @@ export default function AdminPaymentsPage() {
     {
       key: "createdAt",
       label: "Date",
-      render: (value: unknown) => <span className="text-xs text-luxury-gray">{String(value)}</span>,
+      render: (value: unknown) => {
+        const date = new Date(String(value));
+        return <span className="text-xs text-luxury-gray">{date.toLocaleDateString()}</span>;
+      },
     },
     {
       key: "actions",
       label: "",
-      render: (_: unknown, row: typeof mockPayments[0]) => (
+      render: (_: unknown, row: Payment) => (
         <Button
           variant="ghost"
           size="sm"
@@ -227,7 +303,7 @@ export default function AdminPaymentsPage() {
     >
       {/* Stats */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-        {stats.map((stat, index) => (
+        {formattedStats.map((stat, index) => (
           <motion.div
             key={stat.title}
             initial={{ opacity: 0, y: 20 }}
@@ -246,7 +322,7 @@ export default function AdminPaymentsPage() {
           <Input
             placeholder="Search by transaction, user, or track..."
             value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
+            onChange={(e) => handleSearch(e.target.value)}
             className="bg-luxury-dark border-gold/20 focus:border-gold h-10 pl-10 text-white placeholder:text-luxury-gray"
           />
         </div>
@@ -268,24 +344,44 @@ export default function AdminPaymentsPage() {
         animate={{ opacity: 1, y: 0 }}
         transition={{ delay: 0.2 }}
       >
-        <DataTable
-          columns={columns}
-          data={filteredPayments}
-          onRowClick={(row) => setSelectedPayment(row as typeof mockPayments[0])}
-        />
+        {loading ? (
+          <div className="flex items-center justify-center h-64">
+            <Loader2 className="w-8 h-8 animate-spin text-gold" />
+          </div>
+        ) : (
+          <DataTable
+            columns={columns}
+            data={payments}
+            onRowClick={(row) => setSelectedPayment(row as Payment)}
+          />
+        )}
       </motion.div>
 
       {/* Pagination */}
       <div className="flex items-center justify-between mt-4">
         <p className="text-sm text-luxury-gray">
-          Showing {filteredPayments.length} of {mockPayments.length} payments
+          Showing {payments.length} of {pagination.total} payments
         </p>
         <div className="flex items-center gap-2">
-          <Button variant="outline" size="sm" className="border-gold/20 text-luxury-gray hover:text-white">
+          <Button
+            variant="outline"
+            size="sm"
+            className="border-gold/20 text-luxury-gray hover:text-white"
+            disabled={pagination.page === 1}
+            onClick={() => setPagination({ ...pagination, page: pagination.page - 1 })}
+          >
             <ChevronLeft className="w-4 h-4" />
           </Button>
-          <span className="text-sm text-white">1 of 25</span>
-          <Button variant="outline" size="sm" className="border-gold/20 text-luxury-gray hover:text-white">
+          <span className="text-sm text-white">
+            {pagination.page} of {pagination.pages}
+          </span>
+          <Button
+            variant="outline"
+            size="sm"
+            className="border-gold/20 text-luxury-gray hover:text-white"
+            disabled={pagination.page === pagination.pages}
+            onClick={() => setPagination({ ...pagination, page: pagination.page + 1 })}
+          >
             <ChevronRight className="w-4 h-4" />
           </Button>
         </div>
@@ -333,7 +429,7 @@ export default function AdminPaymentsPage() {
 
                 {/* Amount */}
                 <div className="text-center py-6 border-y border-gold/10 mb-6">
-                  <div className="text-4xl font-bold text-gold">${selectedPayment.amount}</div>
+                  <div className="text-4xl font-bold text-gold">£{selectedPayment.amount.toLocaleString()}</div>
                   <div className="text-sm text-luxury-gray mt-1">{selectedPayment.currency}</div>
                 </div>
 
@@ -357,14 +453,37 @@ export default function AdminPaymentsPage() {
                   </div>
                   <div className="flex justify-between">
                     <span className="text-luxury-gray">Date</span>
-                    <span className="text-white">{selectedPayment.createdAt}</span>
+                    <span className="text-white">{new Date(selectedPayment.createdAt).toLocaleDateString()}</span>
                   </div>
                 </div>
 
                 {/* Actions */}
+                {selectedPayment.status === "pending" && (
+                  <div className="mt-6 flex gap-3">
+                    <GoldButton
+                      className="flex-1 bg-green-600 hover:bg-green-700 text-white"
+                      onClick={handleApprovePayment}
+                    >
+                      <CheckCircle2 className="w-4 h-4 mr-2" />
+                      Approve
+                    </GoldButton>
+                    <GoldButton
+                      variant="outline"
+                      className="flex-1 border-red-400/50 text-red-400 hover:bg-red-400/10"
+                      onClick={handleRejectPayment}
+                    >
+                      <XCircle className="w-4 h-4 mr-2" />
+                      Reject
+                    </GoldButton>
+                  </div>
+                )}
                 {selectedPayment.status === "paid" && (
                   <div className="mt-6">
-                    <GoldButton variant="outline" className="w-full border-red-400/50 text-red-400 hover:bg-red-400/10">
+                    <GoldButton
+                      variant="outline"
+                      className="w-full border-red-400/50 text-red-400 hover:bg-red-400/10"
+                      onClick={handleRefundPayment}
+                    >
                       <RefreshCw className="w-4 h-4 mr-2" />
                       Process Refund
                     </GoldButton>

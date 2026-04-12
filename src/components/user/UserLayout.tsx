@@ -22,6 +22,7 @@ import {
   Crown,
 } from "lucide-react";
 import { GoldButton } from "@/components/shared";
+import { LogoutButton } from "@/components/LogoutButton";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -142,13 +143,7 @@ export function UserLayout({ children, title, subtitle, actions, user }: UserLay
             <div className="text-lg font-mono text-gold uppercase">{user?.metadata?.referral_code || user?.referralCode || "WELCOME24"}</div>
           </div>
 
-          <Link
-            href="/login"
-            className="flex items-center gap-2 w-full px-3 py-2 text-sm text-luxury-gray hover:text-red-400 hover:bg-red-400/10 rounded-lg transition-colors"
-          >
-            <LogOut className="w-4 h-4" />
-            Log Out
-          </Link>
+          <LogoutButton isAdmin={false} showText={true} className="w-full px-3 py-2 text-sm text-luxury-gray hover:text-red-400 hover:bg-red-400/10 rounded-lg justify-start" />
         </div>
       </aside>
 
@@ -235,13 +230,9 @@ export function UserLayout({ children, title, subtitle, actions, user }: UserLay
                           Help & Support
                         </Link>
                         <hr className="my-2 border-gold/10" />
-                        <Link
-                          href="/login"
-                          className="flex items-center gap-2 px-4 py-2 text-sm text-red-400 hover:text-red-300 hover:bg-luxury-lighter"
-                        >
-                          <LogOut className="w-4 h-4" />
-                          Log Out
-                        </Link>
+                        <div className="px-4 py-2">
+                          <LogoutButton isAdmin={false} showText={true} className="w-full px-0 text-red-400 hover:text-red-300 justify-start" />
+                        </div>
                       </div>
                     </motion.div>
                   )}

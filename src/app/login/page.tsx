@@ -3,14 +3,20 @@
 import { useState } from "react";
 import { motion } from "framer-motion";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { Mail, Lock, Eye, EyeOff, ArrowLeft, Music } from "lucide-react";
 import { GoldButton, GlowCard } from "@/components/shared";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { useToast } from "@/hooks/use-toast";
+import { useAuth } from "@/hooks/use-auth";
 
 export default function LoginPage() {
   const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
+  const { toast } = useToast();
+  const router = useRouter();
+  const { login } = useAuth();
   const [formData, setFormData] = useState({
     email: "",
     password: "",
@@ -20,10 +26,23 @@ export default function LoginPage() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsLoading(true);
-    await new Promise((resolve) => setTimeout(resolve, 1500));
-    setIsLoading(false);
-    // Redirect to dashboard
-    window.location.href = "/dashboard";
+
+    try {
+      await login(formData.email, formData.password);
+      toast({
+        title: "Success",
+        description: "You have been signed in successfully",
+      });
+      router.push("/dashboard");
+    } catch (error: any) {
+      toast({
+        title: "Login Failed",
+        description: error.message || "Unable to sign in. Please check your credentials.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   return (
@@ -86,7 +105,7 @@ export default function LoginPage() {
                 <div className="space-y-2">
                   <div className="flex items-center justify-between">
                     <Label htmlFor="password" className="text-white">Password</Label>
-                    <Link href="/forgot-password" className="text-xs text-gold hover:text-brand-orange">
+                    <Link href="/auth/reset-password" className="text-xs text-gold hover:text-brand-orange">
                       Forgot password?
                     </Link>
                   </div>
@@ -165,6 +184,16 @@ export default function LoginPage() {
                   Create one
                 </Link>
               </p>
+
+              {/* Admin Login Link */}
+              <div className="mt-4 pt-4 border-t border-gold/10">
+                <p className="text-center text-xs text-luxury-gray">
+                  Administrator?{" "}
+                  <Link href="/admin/login" className="text-gold hover:text-brand-orange font-medium">
+                    Admin Portal
+                  </Link>
+                </p>
+              </div>
             </GlowCard>
           </motion.div>
         </div>

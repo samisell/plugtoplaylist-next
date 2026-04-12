@@ -1,42 +1,47 @@
-import { createClient } from "@/lib/supabase/server";
-import { createAdminClient } from "@/lib/supabase/admin";
+import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
+import { db } from "@/lib/db";
 import DashboardClient from "./DashboardClient";
 
+const SESSION_COOKIE = "ptp_user_id";
+
 export default async function UserDashboardPage() {
-  const supabase = await createClient();
+  const cookieStore = cookies();
+  const userId = cookieStore.get(SESSION_COOKIE)?.value;
 
-  const { data: { user }, error: authError } = await supabase.auth.getUser();
-
-  if (authError || !user) {
+  if (!userId) {
     redirect("/login");
   }
 
-  const adminClient = createAdminClient();
-
-  let { data: userData, error: userError } = await adminClient
-    .from("users" as any)
-    .select("*")
-    .eq("id", user.id)
-    .single();
-
-  if (!userData && user) {
-     const newActiveUser = {
-         id: user.id,
-         email: user.email,
-         display_name: user.user_metadata?.full_name || "New User",
-         role: "user",
-         metadata: { referral_code: Math.random().toString(36).substring(2, 8).toUpperCase() }
-     };
-     await adminClient.from("users" as any).insert(newActiveUser);
-     userData = newActiveUser;
+  const user = await db.user.findUnique({ where: { id: userId } });
+  if (!user) {
+    redirect("/login");
   }
 
-  const { data: submissions } = await adminClient
-    .from("submissions" as any)
-    .select(`*, plan:plans (*), payment:payments (*)`)
-    .eq("user_id", user.id)
-    .order("created_at", { ascending: false });
+  const submissions = await db.submission.findMany({
+    where: { userId: user.id },
+    include: { plan: true, payment: true },
+    orderBy: { createdAt: "desc" },
+  });
 
-  return <DashboardClient user={userData} submissions={submissions || []} />;
+  const userData = {
+    ...user,
+    display_name: user.name,
+    metadata: {
+      referral_code: user.referralCode,
+      referralCode: user.referralCode,
+    },
+  };
+
+  const mappedSubmissions = submissions.map((s) => ({
+    ...s,
+    created_at: s.createdAt,
+    updated_at: s.updatedAt,
+    track_title: s.title,
+    artist_name: s.artist,
+    cover_art_url: s.coverImage,
+    payment: s.payment ? [{ ...s.payment, created_at: s.payment.createdAt }] : [],
+  }));
+
+  return <DashboardClient user={userData} submissions={mappedSubmissions} />;
 }

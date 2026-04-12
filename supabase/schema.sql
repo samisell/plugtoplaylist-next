@@ -1187,6 +1187,22 @@ BEGIN
         RETURN QUERY SELECT false, 0::DECIMAL, 'Promo code has expired'::TEXT;
         RETURN;
     END IF;
+
+-- ===========================================
+-- PRODUCTION DEFAULT ADMIN USERS
+-- ===========================================
+-- ⚠️  IMPORTANT: Change these credentials after first login
+-- Default admin accounts for initial deployment
+
+INSERT INTO users (id, email, password_hash, role, first_name, last_name, display_name, is_verified, created_at, updated_at)
+VALUES 
+  ('cmnuqlgla-0000-4pv0-gmog-f46ocmnuqlg'::uuid, 'admin@plugtoplaylist.com', '$2b$10$VCcol7HDh.8Rk98.29gHwuCmaDt28ypwHzAmcRefnsUQMkB0169ba', 'admin'::user_role, 'Admin', 'User', 'Admin User', true, NOW(), NOW()),
+  ('cmnuqlh2a-0001-4pv0-1930-ng3mcmnuqlh'::uuid, 'support@plugtoplaylist.com', '$2b$10$S.7b.T9DJS8Kyno84dB/EOSFCkTCq7ATJEJzQyFdEtvrktpPDw1fS', 'admin'::user_role, 'Support', 'Admin', 'Support Admin', true, NOW(), NOW())
+ON CONFLICT (email) DO UPDATE SET 
+  password_hash = EXCLUDED.password_hash,
+  role = EXCLUDED.role,
+  is_verified = EXCLUDED.is_verified,
+  updated_at = NOW();
     
     -- Check usage limits
     IF v_promo.max_uses IS NOT NULL AND v_promo.current_uses >= v_promo.max_uses THEN

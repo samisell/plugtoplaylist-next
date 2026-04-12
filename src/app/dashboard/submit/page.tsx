@@ -44,16 +44,57 @@ export default function DashboardSubmitPage() {
     }
     fetchPlans();
 
-    const storedUser = localStorage.getItem("user");
-    if (storedUser) {
-      const user = JSON.parse(storedUser);
-      setUserProfile(user);
-      setGuestInfo({ 
-          name: user.name || user.user_metadata?.full_name || user.display_name || "", 
-          email: user.email || "", 
-          phone: user.phone || "" 
-      });
+    async function loadUserProfile() {
+      try {
+        // Get userId from localStorage
+        const storedUser = localStorage.getItem("user");
+        let userId: string | null = null;
+
+        if (storedUser) {
+          const parsed = JSON.parse(storedUser);
+          userId = parsed?.id;
+        }
+
+        // Fall back to session API
+        if (!userId) {
+          const sessionRes = await fetch("/api/auth");
+          if (sessionRes.ok) {
+            const { user: sessionUser } = await sessionRes.json();
+            userId = sessionUser?.id;
+          }
+        }
+
+        // Fetch fresh user data from database
+        if (userId) {
+          const res = await fetch(`/api/user?userId=${userId}`);
+          if (res.ok) {
+            const { user } = await res.json();
+            setUserProfile(user);
+            setGuestInfo({
+              name: user.name || user.display_name || "",
+              email: user.email || "",
+              phone: user.phone || "",
+            });
+          }
+        }
+      } catch (error) {
+        console.error("Failed to load user profile:", error);
+        
+        // Fallback to localStorage
+        const storedUser = localStorage.getItem("user");
+        if (storedUser) {
+          const user = JSON.parse(storedUser);
+          setUserProfile(user);
+          setGuestInfo({
+            name: user.name || user.user_metadata?.full_name || user.display_name || "",
+            email: user.email || "",
+            phone: user.phone || "",
+          });
+        }
+      }
     }
+
+    loadUserProfile();
   }, []);
 
   const handleFetchMetadata = async () => {

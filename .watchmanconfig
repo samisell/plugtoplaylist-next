@@ -1,0 +1,24 @@
+{
+  "ignore_dirs": [
+    ".next",
+    "node_modules",
+    ".git",
+    "System Volume Information",
+    "$RECYCLE.BIN",
+    ".idea",
+    ".vscode",
+    "dist",
+    "build",
+    "out"
+  ],
+  "ignore_vcs": true,
+  "watchman_timeout_ms": 30000,
+  "illegal_ignore_patterns": [
+    "pagefile.sys",
+    "hiberfil.sys",
+    "swapfile.sys",
+    "DumpStack.log*",
+    "*.tmp"
+  ]
+}
+

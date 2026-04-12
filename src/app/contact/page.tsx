@@ -12,7 +12,9 @@ import {
   MessageSquare,
   HelpCircle,
   Clock,
-  CheckCircle2
+  CheckCircle2,
+  AlertCircle,
+  Loader2
 } from "lucide-react";
 import { Header, Footer, GoldButton, GlowCard } from "@/components/shared";
 import { Input } from "@/components/ui/input";
@@ -61,19 +63,101 @@ const faqs = [
 export default function ContactPage() {
   const [isLoading, setIsLoading] = useState(false);
   const [isSubmitted, setIsSubmitted] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const [formData, setFormData] = useState({
     name: "",
     email: "",
     subject: "",
     message: "",
   });
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
+
+  const validateField = (field: string, value: string): string | null => {
+    switch (field) {
+      case "name":
+        return value.trim().length < 2 ? "Name must be at least 2 characters" : null;
+      case "email":
+        return !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value) ? "Please enter a valid email address" : null;
+      case "subject":
+        return value.trim().length < 3 ? "Subject must be at least 3 characters" : null;
+      case "message":
+        return value.trim().length < 10 ? "Message must be at least 10 characters" : null;
+      default:
+        return null;
+    }
+  };
+
+  const handleChange = (field: string, value: string) => {
+    setFormData({ ...formData, [field]: value });
+    // Clear error for this field when user starts typing
+    const fieldError = validateField(field, value);
+    setFieldErrors({
+      ...fieldErrors,
+      [field]: fieldError || "",
+    });
+    // Clear general error
+    setError(null);
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    
+    // Validate all fields
+    const newErrors: Record<string, string> = {};
+    let isFormValid = true;
+
+    Object.entries(formData).forEach(([field, value]) => {
+      const error = validateField(field, value);
+      if (error) {
+        newErrors[field] = error;
+        isFormValid = false;
+      }
+    });
+
+    if (!isFormValid) {
+      setFieldErrors(newErrors);
+      setError("Please fix the errors below");
+      return;
+    }
+
     setIsLoading(true);
-    await new Promise((resolve) => setTimeout(resolve, 1500));
-    setIsLoading(false);
-    setIsSubmitted(true);
+    setError(null);
+
+    try {
+      const response = await fetch("/api/contact", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          name: formData.name.trim(),
+          email: formData.email.trim(),
+          subject: formData.subject.trim(),
+          message: formData.message.trim(),
+        }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || "Failed to send message");
+      }
+
+      setFormData({ name: "", email: "", subject: "", message: "" });
+      setFieldErrors({});
+      setIsSubmitted(true);
+
+      // Auto-reset after 5 seconds
+      setTimeout(() => {
+        setIsSubmitted(false);
+      }, 5000);
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : "An error occurred. Please try again.";
+      setError(errorMessage);
+      console.error("Contact form error:", err);
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   return (
@@ -115,9 +199,12 @@ export default function ContactPage() {
               </div>
               <h2 className="text-2xl font-bold text-white mb-4">Message Sent!</h2>
               <p className="text-luxury-gray mb-6">
-                Thank you for reaching out. We&apos;ll get back to you within 24 hours.
+                Thank you for reaching out. We&apos;ll get back to you within 24 hours. A confirmation email has been sent to your inbox.
               </p>
-              <GoldButton onClick={() => setIsSubmitted(false)}>
+              <GoldButton onClick={() => {
+                setIsSubmitted(false);
+                setFormData({ name: "", email: "", subject: "", message: "" });
+              }}>
                 Send Another Message
               </GoldButton>
             </motion.div>
@@ -135,6 +222,17 @@ export default function ContactPage() {
                     Send us a message
                   </h2>
                   
+                  {error && (
+                    <motion.div
+                      initial={{ opacity: 0, y: -10 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      className="mb-4 p-4 bg-red-500/10 border border-red-500/50 rounded-lg flex gap-3"
+                    >
+                      <AlertCircle className="w-5 h-5 text-red-400 flex-shrink-0 mt-0.5" />
+                      <p className="text-red-400 text-sm">{error}</p>
+                    </motion.div>
+                  )}
+                  
                   <form onSubmit={handleSubmit} className="space-y-4">
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                       <div className="space-y-2">
@@ -143,10 +241,15 @@ export default function ContactPage() {
                           id="name"
                           placeholder="Your name"
                           value={formData.name}
-                          onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                          className="bg-luxury-lighter border-gold/20 focus:border-gold h-12 text-white placeholder:text-luxury-gray"
-                          required
+                          onChange={(e) => handleChange("name", e.target.value)}
+                          className={`bg-luxury-lighter border-gold/20 focus:border-gold h-12 text-white placeholder:text-luxury-gray ${
+                            fieldErrors.name ? "border-red-500/50 focus:border-red-500" : ""
+                          }`}
+                          disabled={isLoading}
                         />
+                        {fieldErrors.name && (
+                          <p className="text-red-400 text-xs">{fieldErrors.name}</p>
+                        )}
                       </div>
                       <div className="space-y-2">
                         <Label htmlFor="email" className="text-white">Email</Label>
@@ -155,10 +258,15 @@ export default function ContactPage() {
                           type="email"
                           placeholder="your@email.com"
                           value={formData.email}
-                          onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-                          className="bg-luxury-lighter border-gold/20 focus:border-gold h-12 text-white placeholder:text-luxury-gray"
-                          required
+                          onChange={(e) => handleChange("email", e.target.value)}
+                          className={`bg-luxury-lighter border-gold/20 focus:border-gold h-12 text-white placeholder:text-luxury-gray ${
+                            fieldErrors.email ? "border-red-500/50 focus:border-red-500" : ""
+                          }`}
+                          disabled={isLoading}
                         />
+                        {fieldErrors.email && (
+                          <p className="text-red-400 text-xs">{fieldErrors.email}</p>
+                        )}
                       </div>
                     </div>
 
@@ -168,28 +276,57 @@ export default function ContactPage() {
                         id="subject"
                         placeholder="How can we help?"
                         value={formData.subject}
-                        onChange={(e) => setFormData({ ...formData, subject: e.target.value })}
-                        className="bg-luxury-lighter border-gold/20 focus:border-gold h-12 text-white placeholder:text-luxury-gray"
-                        required
+                        onChange={(e) => handleChange("subject", e.target.value)}
+                        className={`bg-luxury-lighter border-gold/20 focus:border-gold h-12 text-white placeholder:text-luxury-gray ${
+                          fieldErrors.subject ? "border-red-500/50 focus:border-red-500" : ""
+                        }`}
+                        disabled={isLoading}
                       />
+                      {fieldErrors.subject && (
+                        <p className="text-red-400 text-xs">{fieldErrors.subject}</p>
+                      )}
                     </div>
 
                     <div className="space-y-2">
-                      <Label htmlFor="message" className="text-white">Message</Label>
+                      <div className="flex justify-between">
+                        <Label htmlFor="message" className="text-white">Message</Label>
+                        <span className="text-xs text-luxury-gray">
+                          {formData.message.length}/5000
+                        </span>
+                      </div>
                       <Textarea
                         id="message"
                         placeholder="Tell us more about your inquiry..."
                         value={formData.message}
-                        onChange={(e) => setFormData({ ...formData, message: e.target.value })}
-                        className="bg-luxury-lighter border-gold/20 focus:border-gold min-h-[150px] text-white placeholder:text-luxury-gray resize-none"
-                        required
+                        onChange={(e) => handleChange("message", e.target.value)}
+                        maxLength={5000}
+                        className={`bg-luxury-lighter border-gold/20 focus:border-gold min-h-[150px] text-white placeholder:text-luxury-gray resize-none ${
+                          fieldErrors.message ? "border-red-500/50 focus:border-red-500" : ""
+                        }`}
+                        disabled={isLoading}
                       />
+                      {fieldErrors.message && (
+                        <p className="text-red-400 text-xs">{fieldErrors.message}</p>
+                      )}
                     </div>
 
-                    <GoldButton type="submit" className="w-full" size="lg" loading={isLoading}>
-                      <Send className="w-4 h-4 mr-2" />
-                      {isLoading ? "Sending..." : "Send Message"}
-                    </GoldButton>
+                    <button
+                      type="submit"
+                      disabled={isLoading}
+                      className="w-full px-6 py-3 bg-gold text-luxury-black font-semibold rounded-lg hover:shadow-lg hover:shadow-gold/50 transition-all duration-300 flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      {isLoading ? (
+                        <>
+                          <Loader2 className="w-4 h-4 animate-spin" />
+                          Sending...
+                        </>
+                      ) : (
+                        <>
+                          <Send className="w-4 h-4" />
+                          Send Message
+                        </>
+                      )}
+                    </button>
                   </form>
                 </GlowCard>
               </motion.div>

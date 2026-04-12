@@ -27,6 +27,7 @@ import {
   Megaphone,
 } from "lucide-react";
 import { GoldButton } from "@/components/shared";
+import { LogoutButton } from "@/components/LogoutButton";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 
@@ -130,13 +131,7 @@ export function AdminLayout({ children, title, subtitle, actions }: AdminLayoutP
               <Home className="w-5 h-5" />
               <span className="font-medium">Back to Site</span>
             </Link>
-            <Link
-              href="/login"
-              className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-red-400 hover:text-red-300 hover:bg-red-400/10 transition-all text-sm"
-            >
-              <LogOut className="w-5 h-5" />
-              <span className="font-medium">Log Out</span>
-            </Link>
+            <LogoutButton isAdmin={true} showText={true} className="w-full px-3 py-2.5 text-red-400 hover:text-red-300 hover:bg-red-400/10 rounded-lg justify-start text-sm font-medium" />
           </div>
         </div>
       </aside>

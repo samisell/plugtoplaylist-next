@@ -1,60 +1,98 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createAdminClient } from '@/lib/supabase/admin';
-import { sendSubmissionConfirmationEmail, sendNewSubmissionAdminNotification } from "@/lib/email";
-import { getTrackMetadata } from "@/lib/metadata";
 import Stripe from "stripe";
+import { randomBytes, randomUUID } from "crypto";
+import { db } from "@/lib/db";
+import { getTrackMetadata } from "@/lib/metadata";
 
 export const dynamic = "force-dynamic";
 
+const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!);
 
-// GET - List submissions
+function mapSubmission(submission: any) {
+  const mappedPayment = submission.payment
+    ? {
+        ...submission.payment,
+        created_at: submission.payment.createdAt,
+        paid_at: submission.payment.paidAt,
+      }
+    : null;
+
+  return {
+    ...submission,
+    created_at: submission.createdAt,
+    updated_at: submission.updatedAt,
+    user_id: submission.userId,
+    plan_id: submission.planId,
+    track_title: submission.title,
+    artist_name: submission.artist,
+    cover_art_url: submission.coverImage,
+    duration_seconds: submission.duration,
+    metadata: {
+      album: submission.album,
+      streams: 0,
+      progress: submission.status === "active" ? 50 : submission.status === "completed" ? 100 : 0,
+      daysRemaining: submission.status === "active" ? 14 : 0,
+    },
+    payment: mappedPayment ? [mappedPayment] : [],
+  };
+}
+
+async function ensureUser(userId?: string, guestName?: string, guestEmail?: string) {
+  if (!userId) return null;
+
+  const existing = await db.user.findUnique({ where: { id: userId } });
+  if (existing) return existing;
+
+  if (guestEmail) {
+    const byEmail = await db.user.findUnique({ where: { email: guestEmail } });
+    if (byEmail) return byEmail;
+  }
+
+  return db.user.create({
+    data: {
+      id: userId,
+      email: guestEmail || `guest_${userId.substring(0, 8)}@ptp.com`,
+      name: guestName || "Guest User",
+      password: randomBytes(24).toString("hex"),
+      role: "user",
+      referralCode: randomBytes(4).toString("hex").toUpperCase(),
+    },
+  });
+}
+
 export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
-    const userId = searchParams.get("userId");
-    const status = searchParams.get("status");
+    const userId = searchParams.get("userId") || undefined;
+    const status = searchParams.get("status") || undefined;
 
-    // Use Admin Client
-    const adminSupabase = createAdminClient() as any;
+    const submissions = await db.submission.findMany({
+      where: {
+        ...(userId ? { userId } : {}),
+        ...(status ? { status } : {}),
+      },
+      include: {
+        plan: true,
+        payment: true,
+      },
+      orderBy: { createdAt: "desc" },
+    });
 
-    let query = adminSupabase
-      .from("submissions" as any)
-      .select(`*, plan:plans (*), payment:payments (*)`)
-      .order("created_at", { ascending: false });
-    
-    if (userId) query = query.eq("user_id", userId);
-    if (status) query = query.eq("status", status);
-
-    const { data: submissions, error } = await query;
-
-    if (error) {
-       console.error("Fetch submissions error:", error);
-       throw error;
-    }
-
-    // Map snake_case to camelCase for frontend compatibility if needed
-    // But for now, just returning as is
-    return NextResponse.json({ submissions });
+    return NextResponse.json({ submissions: submissions.map(mapSubmission) });
   } catch (error) {
     console.error("Error fetching submissions:", error);
-    return NextResponse.json(
-      { error: "Failed to fetch submissions" },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: "Failed to fetch submissions" }, { status: 500 });
   }
 }
 
-// POST - Create a new submission
 export async function POST(request: NextRequest) {
   try {
-    const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!);
-    console.log("Submission attempt started (SnakeCase Sync)...");
     const body = await request.json();
-    
+
     let {
       userId,
       trackUrl,
-      trackType, // from frontend
+      trackType,
       title,
       artist,
       album,
@@ -62,174 +100,134 @@ export async function POST(request: NextRequest) {
       duration,
       planId,
       guestName,
-      guestEmail
+      guestEmail,
     } = body;
 
     if (!trackUrl || !planId) {
       return NextResponse.json({ error: "Track URL and Plan ID are required" }, { status: 400 });
     }
 
-    // Validate userId is a UUID (prevents legacy guest_ crash)
-    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-    if (userId && !uuidRegex.test(userId)) {
-        console.warn("Legacy ID detected:", userId);
-        return NextResponse.json({ 
-            error: "Session expired", 
-            details: "Your guest session format is outdated. Please refresh the page and try again." 
-        }, { status: 401 });
+    if (!userId) {
+      userId = randomUUID();
     }
 
-    // Metadata enrichment
+    // Validate userId is a non-empty string (supports both UUID and Prisma cuid formats)
+    if (typeof userId !== "string" || !userId.trim()) {
+      return NextResponse.json(
+        {
+          error: "Session expired",
+          details: "Invalid user session. Please refresh the page and try again.",
+        },
+        { status: 401 }
+      );
+    }
+
     try {
-        const metadata = await getTrackMetadata(trackUrl);
-        if (metadata) {
-            title = title || metadata.title;
-            artist = artist || metadata.artist;
-            album = album || metadata.album;
-            coverImage = coverImage || metadata.coverImage;
-            duration = duration || metadata.duration;
-            trackType = trackType || metadata.trackType;
-        }
-    } catch (e) {
-        console.warn("Metadata skip:", e);
+      const metadata = await getTrackMetadata(trackUrl);
+      if (metadata) {
+        title = title || metadata.title;
+        artist = artist || metadata.artist;
+        album = album || metadata.album;
+        coverImage = coverImage || metadata.coverImage;
+        duration = duration || metadata.duration;
+        trackType = trackType || metadata.trackType;
+      }
+    } catch (error) {
+      console.warn("Metadata enrichment skipped:", error);
     }
 
-    // ACTUAL Supabase Insert Payload (SnakeCase)
-    // Map existing fields to DB columns
-    const subData: any = {
-        user_id: userId,
-        plan_id: planId,
-        track_title: title || "Unknown Track",
-        artist_name: artist || "Unknown Artist",
-        spotify_url: trackUrl.includes("spotify") ? trackUrl : null,
-        youtube_url: trackUrl.includes("youtube") || trackUrl.includes("youtu.be") ? trackUrl : null,
-        cover_art_url: coverImage,
-        duration_seconds: duration ? Math.floor(duration) : null,
+    const user = await ensureUser(userId, guestName, guestEmail);
+    const plan = await db.plan.findUnique({ where: { id: planId } });
+
+    if (!plan) {
+      return NextResponse.json({ error: "Plan not found" }, { status: 404 });
+    }
+
+    const submission = await db.submission.create({
+      data: {
+        userId: user?.id || null,
+        planId,
+        guestName: guestName || null,
+        guestEmail: guestEmail || null,
+        trackUrl,
+        trackType: trackType || (trackUrl.includes("youtube") || trackUrl.includes("youtu.be") ? "youtube" : "spotify"),
+        title: title || "Unknown Track",
+        artist: artist || "Unknown Artist",
+        album: album || null,
+        coverImage: coverImage || null,
+        duration: duration ? Math.floor(Number(duration)) : null,
         status: "pending",
-        metadata: { 
-            album: album || null, 
-            guest_name: guestName || null, 
-            guest_email: guestEmail || null 
-        }
-    };
+        paymentStatus: "pending",
+      },
+      include: { plan: true, payment: true },
+    });
 
-    const adminSupabase = createAdminClient();
-
-    // Ensure the user exists in the database to prevent foreign key errors (e.g., stale local storage UUIDs)
-    if (userId) {
-        const { data: existingUser } = await adminSupabase.from("users").select("id").eq("id", userId).single();
-        if (!existingUser) {
-            console.log(`User ${userId} not found in DB. Searching by email...`);
-            
-            if (guestEmail) {
-                const { data: userByEmail } = await (adminSupabase.from("users").select("id").eq("email", guestEmail).single() as any);
-                if (userByEmail) {
-                    console.log(`Found existing user by email: ${userByEmail.id}. Linking to submission.`);
-                    userId = userByEmail.id;
-                    subData.user_id = userId;
-                } else {
-                    console.log(`Upserting entirely new guest...`);
-                    await (adminSupabase.from("users").insert({
-                        id: userId,
-                        email: guestEmail || `guest_${userId.substring(0, 8)}@ptp.com`,
-                        display_name: guestName || "Guest User",
-                        role: "user",
-                        metadata: { is_guest: true }
-                    } as any) as any);
-                }
-            } else {
-                await (adminSupabase.from("users").insert({
-                    id: userId,
-                    email: `guest_${userId.substring(0, 8)}@ptp.com`,
-                    display_name: guestName || "Guest User",
-                    role: "user",
-                    metadata: { is_guest: true }
-                } as any) as any);
-            }
-        }
-    }
-
-    console.log("Inserting submission data to snake_case table...");
-    const { data: submission, error: submissionError } = await (adminSupabase
-      .from("submissions")
-      .insert(subData)
-      .select(`*, plan:plans (*)`)
-      .single() as any);
-
-    if (submissionError) {
-        console.error("Submissions insert fail:", submissionError);
-        return NextResponse.json({ error: "Database insert failed", details: submissionError.message }, { status: 500 });
-    }
-
-    // Get plan price for Stripe
-    let { data: plan, error: planError } = await (adminSupabase
-      .from("plans")
-      .select("*")
-      .eq("id", planId)
-      .single() as any);
-
-    if (planError || !plan) {
-        return NextResponse.json({ error: "Plan not found" }, { status: 404 });
-    }
-
-    // Create Payment Record (SnakeCase)
-    const payData: any = {
-        user_id: userId,
-        submission_id: (submission as any).id,
-        plan_id: planId,
-        amount: (plan as any).price,
+    await db.payment.create({
+      data: {
+        userId: user?.id || null,
+        submissionId: submission.id,
+        amount: plan.price,
         currency: "GBP",
         status: "pending",
-        payment_method: "card",
-        metadata: { submission_id: (submission as any).id }
-    };
+        provider: "stripe",
+      },
+    });
 
-    await adminSupabase.from("payments").insert(payData);
-
-    // Stripe Session
     const session = await stripe.checkout.sessions.create({
       payment_method_types: ["card"],
-      line_items: [{
+      line_items: [
+        {
           price_data: {
             currency: "gbp",
-            product_data: { 
-                name: (plan as any).name, 
-                description: (submission as any).track_title 
+            product_data: {
+              name: plan.name,
+              description: submission.title || "Track submission",
             },
-            unit_amount: Math.round((plan as any).price * 100),
+            unit_amount: Math.round(plan.price * 100),
           },
           quantity: 1,
-      }],
+        },
+      ],
       mode: "payment",
       success_url: `${request.headers.get("origin")}/dashboard/submissions?success=true`,
       cancel_url: `${request.headers.get("origin")}/submit?canceled=true`,
-      metadata: { submissionId: (submission as any).id },
+      metadata: { submissionId: submission.id },
     });
 
-    return NextResponse.json({ submission, checkoutUrl: session.url }, { status: 201 });
+    const fullSubmission = await db.submission.findUnique({
+      where: { id: submission.id },
+      include: { plan: true, payment: true },
+    });
+
+    return NextResponse.json(
+      {
+        submission: fullSubmission ? mapSubmission(fullSubmission) : mapSubmission(submission),
+        checkoutUrl: session.url,
+      },
+      { status: 201 }
+    );
   } catch (error) {
-    console.error("CRITICAL Submission Error:", error);
+    console.error("Submission error:", error);
     return NextResponse.json({ error: "Internal failure" }, { status: 500 });
   }
 }
 
-// PATCH - Update submission status
 export async function PATCH(request: NextRequest) {
   try {
     const body = await request.json();
     const { id, status } = body;
-    if (!id) return NextResponse.json({ error: "ID required" }, { status: 400 });
 
-    const adminSupabase = createAdminClient() as any;
-    const { data: submission, error } = await adminSupabase
-      .from("submissions" as any)
-      .update({ status } as any)
-      .eq("id", id)
-      .select()
-      .single();
+    if (!id) {
+      return NextResponse.json({ error: "ID required" }, { status: 400 });
+    }
 
-    if (error) throw error;
-    return NextResponse.json({ submission });
+    const submission = await db.submission.update({
+      where: { id },
+      data: { status },
+      include: { plan: true, payment: true },
+    });
+
+    return NextResponse.json({ submission: mapSubmission(submission) });
   } catch (error) {
     console.error("Error updating submission:", error);
     return NextResponse.json({ error: "Update failed" }, { status: 500 });

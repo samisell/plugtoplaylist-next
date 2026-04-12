@@ -24,6 +24,17 @@ node_modules
 .DS_Store
 *.pem
 
+# Windows system files
+Thumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+System\ Volume\ Information/
+hiberfil.sys
+pagefile.sys
+swapfile.sys
+*.tmp
+DumpStack.log*
+
 # debug
 npm-debug.log*
 yarn-debug.log*

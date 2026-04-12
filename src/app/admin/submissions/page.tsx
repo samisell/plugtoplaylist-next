@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   Music,
@@ -20,6 +20,7 @@ import {
   ChevronRight,
   AlertCircle,
   Play,
+  Loader2,
 } from "lucide-react";
 import { AdminLayout, StatCard, DataTable, FilterBadge } from "@/components/admin/AdminLayout";
 import { GoldButton, StatusBadge, GlowCard } from "@/components/shared";
@@ -27,93 +28,7 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
-const stats = [
-  { title: "Total Submissions", value: "1,247", change: "+12.5%", icon: Music, color: "gold" as const },
-  { title: "Pending Review", value: "12", change: "-3", icon: Clock, color: "orange" as const },
-  { title: "Active Campaigns", value: "89", change: "+8", icon: Play, color: "green" as const },
-  { title: "This Month Revenue", value: "$24,850", change: "+23.1%", icon: DollarSign, color: "blue" as const },
-];
 
-const mockSubmissions = [
-  {
-    id: "1",
-    title: "Blinding Lights",
-    artist: "The Weeknd",
-    cover: "https://images.unsplash.com/photo-1614613535308-eb5fbd3d2c17?w=100&h=100&fit=crop",
-    user: "alex@email.com",
-    userId: "user_1",
-    status: "pending",
-    plan: "Premium",
-    amount: 149,
-    platform: "spotify",
-    submittedAt: "2024-01-21",
-  },
-  {
-    id: "2",
-    title: "Shape of You",
-    artist: "Ed Sheeran",
-    cover: "https://images.unsplash.com/photo-1493225457124-a3eb161ffa5f?w=100&h=100&fit=crop",
-    user: "maya@email.com",
-    userId: "user_2",
-    status: "active",
-    plan: "Professional",
-    amount: 349,
-    platform: "youtube",
-    submittedAt: "2024-01-18",
-  },
-  {
-    id: "3",
-    title: "Levitating",
-    artist: "Dua Lipa",
-    cover: "https://images.unsplash.com/photo-1470225620780-dba8ba36b745?w=100&h=100&fit=crop",
-    user: "jordan@email.com",
-    userId: "user_3",
-    status: "completed",
-    plan: "Starter",
-    amount: 49,
-    platform: "spotify",
-    submittedAt: "2024-01-10",
-  },
-  {
-    id: "4",
-    title: "Stay",
-    artist: "Kid Laroi",
-    cover: "https://images.unsplash.com/photo-1493225457124-a3eb161ffa5f?w=100&h=100&fit=crop",
-    user: "nina@email.com",
-    userId: "user_4",
-    status: "pending",
-    plan: "Premium",
-    amount: 149,
-    platform: "spotify",
-    submittedAt: "2024-01-20",
-  },
-  {
-    id: "5",
-    title: "Peaches",
-    artist: "Justin Bieber",
-    cover: "https://images.unsplash.com/photo-1614613535308-eb5fbd3d2c17?w=100&h=100&fit=crop",
-    user: "marcus@email.com",
-    userId: "user_5",
-    status: "active",
-    plan: "Professional",
-    amount: 349,
-    platform: "youtube",
-    submittedAt: "2024-01-19",
-  },
-  {
-    id: "6",
-    title: "Good 4 U",
-    artist: "Olivia Rodrigo",
-    cover: "https://images.unsplash.com/photo-1470225620780-dba8ba36b745?w=100&h=100&fit=crop",
-    user: "sophie@email.com",
-    userId: "user_6",
-    status: "rejected",
-    plan: "Starter",
-    amount: 49,
-    platform: "spotify",
-    submittedAt: "2024-01-15",
-  },
-];
 
 const statusFilters = [
   { label: "All", value: "all" },
@@ -123,25 +38,144 @@ const statusFilters = [
   { label: "Rejected", value: "rejected" },
 ];
 
+interface Submission {
+  id: string;
+  title: string;
+  artist: string;
+  cover: string;
+  user: string;
+  userId: string;
+  userName: string;
+  status: "pending" | "active" | "completed" | "rejected";
+  plan: string;
+  amount: number;
+  platform: string;
+  submittedAt: string;
+  description?: string;
+  audioUrl?: string;
+}
+
 export default function AdminSubmissionsPage() {
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
-  const [selectedSubmission, setSelectedSubmission] = useState<typeof mockSubmissions[0] | null>(null);
-
-  const filteredSubmissions = mockSubmissions.filter((sub) => {
-    const matchesSearch =
-      sub.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      sub.artist.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      sub.user.toLowerCase().includes(searchQuery.toLowerCase());
-    const matchesStatus = statusFilter === "all" || sub.status === statusFilter;
-    return matchesSearch && matchesStatus;
+  const [selectedSubmission, setSelectedSubmission] = useState<Submission | null>(null);
+  const [submissions, setSubmissions] = useState<Submission[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [actionLoading, setActionLoading] = useState<string | null>(null);
+  const [stats, setStats] = useState({
+    totalSubmissions: 0,
+    pendingSubmissions: 0,
+    activeSubmissions: 0,
+    monthlyRevenue: 0,
   });
+  const [pagination, setPagination] = useState({
+    page: 1,
+    limit: 20,
+    total: 0,
+    pages: 0,
+  });
+
+  // Fetch submissions data
+  useEffect(() => {
+    fetchSubmissions();
+  }, [statusFilter, pagination.page]);
+
+  const fetchSubmissions = async () => {
+    try {
+      setLoading(true);
+      const params = new URLSearchParams({
+        page: pagination.page.toString(),
+        limit: pagination.limit.toString(),
+        status: statusFilter,
+        ...(searchQuery && { search: searchQuery }),
+      });
+
+      const response = await fetch(`/api/admin/submissions?${params}`);
+      const data = await response.json();
+
+      if (response.ok) {
+        setSubmissions(data.submissions);
+        setPagination(data.pagination);
+        setStats(data.stats);
+      }
+    } catch (error) {
+      console.error("Failed to fetch submissions:", error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleSearch = (query: string) => {
+    setSearchQuery(query);
+    setPagination({ ...pagination, page: 1 });
+  };
+
+  const handleAction = async (submissionId: string, action: "approve" | "reject" | "complete") => {
+    try {
+      setActionLoading(submissionId);
+      const response = await fetch(`/api/admin/submissions/${submissionId}/${action}`, {
+        method: "POST",
+      });
+
+      if (response.ok) {
+        // Update local state
+        const updated = submissions.map((sub) =>
+          sub.id === submissionId
+            ? {
+                ...sub,
+                status: action === "approve" ? "active" : action === "reject" ? "rejected" : "completed",
+              }
+            : sub
+        );
+        setSubmissions(updated);
+
+        // Refresh stats
+        await fetchSubmissions();
+        setSelectedSubmission(null);
+      }
+    } catch (error) {
+      console.error("Action failed:", error);
+    } finally {
+      setActionLoading(null);
+    }
+  };
+
+  const formattedStats = [
+    {
+      title: "Total Submissions",
+      value: stats.totalSubmissions.toString(),
+      change: "+12.5%",
+      icon: Music,
+      color: "gold" as const,
+    },
+    {
+      title: "Pending Review",
+      value: stats.pendingSubmissions.toString(),
+      change: "-3",
+      icon: Clock,
+      color: "orange" as const,
+    },
+    {
+      title: "Active Campaigns",
+      value: stats.activeSubmissions.toString(),
+      change: "+8",
+      icon: Play,
+      color: "green" as const,
+    },
+    {
+      title: "This Month Revenue",
+      value: `£${stats.monthlyRevenue.toLocaleString()}`,
+      change: "+23.1%",
+      icon: DollarSign,
+      color: "blue" as const,
+    },
+  ];
 
   const columns = [
     {
       key: "track",
       label: "Track",
-      render: (_: unknown, row: typeof mockSubmissions[0]) => (
+      render: (_: unknown, row: Submission) => (
         <div className="flex items-center gap-3">
           <img src={row.cover} alt={row.title} className="w-10 h-10 rounded-lg object-cover" />
           <div>
@@ -182,7 +216,7 @@ export default function AdminSubmissionsPage() {
     {
       key: "amount",
       label: "Amount",
-      render: (value: unknown) => <span className="text-gold font-medium">${String(value)}</span>,
+      render: (value: unknown) => <span className="text-gold font-medium">£{String(value)}</span>,
     },
     {
       key: "status",
@@ -201,27 +235,64 @@ export default function AdminSubmissionsPage() {
     {
       key: "actions",
       label: "Actions",
-      render: (_: unknown, row: typeof mockSubmissions[0]) => (
+      render: (_: unknown, row: Submission) => (
         <div className="flex items-center gap-1">
           {row.status === "pending" && (
             <>
               <Button
                 variant="ghost"
                 size="sm"
-                className="text-green-400 hover:text-green-300 hover:bg-green-400/10"
+                className="text-green-400 hover:text-green-300 hover:bg-green-400/10 disabled:opacity-50 disabled:cursor-not-allowed"
                 title="Approve"
+                disabled={actionLoading === row.id}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  handleAction(row.id, "approve");
+                }}
               >
-                <Check className="w-4 h-4" />
+                {actionLoading === row.id ? (
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                ) : (
+                  <Check className="w-4 h-4" />
+                )}
               </Button>
               <Button
                 variant="ghost"
                 size="sm"
-                className="text-red-400 hover:text-red-300 hover:bg-red-400/10"
+                className="text-red-400 hover:text-red-300 hover:bg-red-400/10 disabled:opacity-50 disabled:cursor-not-allowed"
                 title="Reject"
+                disabled={actionLoading === row.id}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  handleAction(row.id, "reject");
+                }}
               >
-                <X className="w-4 h-4" />
+                {actionLoading === row.id ? (
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                ) : (
+                  <X className="w-4 h-4" />
+                )}
               </Button>
             </>
+          )}
+          {row.status === "active" && (
+            <Button
+              variant="ghost"
+              size="sm"
+              className="text-blue-400 hover:text-blue-300 hover:bg-blue-400/10 disabled:opacity-50 disabled:cursor-not-allowed"
+              title="Mark Complete"
+              disabled={actionLoading === row.id}
+              onClick={(e) => {
+                e.stopPropagation();
+                handleAction(row.id, "complete");
+              }}
+            >
+              {actionLoading === row.id ? (
+                <Loader2 className="w-4 h-4 animate-spin" />
+              ) : (
+                <Check className="w-4 h-4" />
+              )}
+            </Button>
           )}
           <Button
             variant="ghost"
@@ -259,7 +330,7 @@ export default function AdminSubmissionsPage() {
     >
       {/* Stats */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-        {stats.map((stat, index) => (
+        {formattedStats.map((stat, index) => (
           <motion.div
             key={stat.title}
             initial={{ opacity: 0, y: 20 }}
@@ -278,7 +349,7 @@ export default function AdminSubmissionsPage() {
           <Input
             placeholder="Search by track, artist, or user..."
             value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
+            onChange={(e) => handleSearch(e.target.value)}
             className="bg-luxury-dark border-gold/20 focus:border-gold h-10 pl-10 text-white placeholder:text-luxury-gray"
           />
         </div>
@@ -300,24 +371,44 @@ export default function AdminSubmissionsPage() {
         animate={{ opacity: 1, y: 0 }}
         transition={{ delay: 0.2 }}
       >
-        <DataTable
-          columns={columns}
-          data={filteredSubmissions}
-          onRowClick={(row) => setSelectedSubmission(row as typeof mockSubmissions[0])}
-        />
+        {loading ? (
+          <div className="flex items-center justify-center h-64">
+            <Loader2 className="w-8 h-8 animate-spin text-gold" />
+          </div>
+        ) : (
+          <DataTable
+            columns={columns}
+            data={submissions}
+            onRowClick={(row) => setSelectedSubmission(row as Submission)}
+          />
+        )}
       </motion.div>
 
       {/* Pagination */}
       <div className="flex items-center justify-between mt-4">
         <p className="text-sm text-luxury-gray">
-          Showing {filteredSubmissions.length} of {mockSubmissions.length} submissions
+          Showing {submissions.length} of {pagination.total} submissions
         </p>
         <div className="flex items-center gap-2">
-          <Button variant="outline" size="sm" className="border-gold/20 text-luxury-gray hover:text-white">
+          <Button
+            variant="outline"
+            size="sm"
+            className="border-gold/20 text-luxury-gray hover:text-white"
+            disabled={pagination.page === 1}
+            onClick={() => setPagination({ ...pagination, page: pagination.page - 1 })}
+          >
             <ChevronLeft className="w-4 h-4" />
           </Button>
-          <span className="text-sm text-white">1 of 25</span>
-          <Button variant="outline" size="sm" className="border-gold/20 text-luxury-gray hover:text-white">
+          <span className="text-sm text-white">
+            {pagination.page} of {pagination.pages}
+          </span>
+          <Button
+            variant="outline"
+            size="sm"
+            className="border-gold/20 text-luxury-gray hover:text-white"
+            disabled={pagination.page === pagination.pages}
+            onClick={() => setPagination({ ...pagination, page: pagination.page + 1 })}
+          >
             <ChevronRight className="w-4 h-4" />
           </Button>
         </div>
@@ -382,7 +473,7 @@ export default function AdminSubmissionsPage() {
                   </div>
                   <div className="bg-luxury-black/50 rounded-lg p-3">
                     <div className="text-xs text-luxury-gray mb-1">Amount</div>
-                    <div className="text-sm text-gold font-medium">${selectedSubmission.amount}</div>
+                    <div className="text-sm text-gold font-medium">£{selectedSubmission.amount}</div>
                   </div>
                   <div className="bg-luxury-black/50 rounded-lg p-3">
                     <div className="text-xs text-luxury-gray mb-1">Platform</div>
@@ -401,14 +492,54 @@ export default function AdminSubmissionsPage() {
                 {/* Actions */}
                 {selectedSubmission.status === "pending" && (
                   <div className="flex gap-3">
-                    <GoldButton className="flex-1">
-                      <Check className="w-4 h-4 mr-2" />
+                    <GoldButton
+                      className="flex-1"
+                      disabled={actionLoading === selectedSubmission.id}
+                      onClick={() => handleAction(selectedSubmission.id, "approve")}
+                    >
+                      {actionLoading === selectedSubmission.id ? (
+                        <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                      ) : (
+                        <Check className="w-4 h-4 mr-2" />
+                      )}
                       Approve & Start Campaign
                     </GoldButton>
-                    <GoldButton variant="outline" className="flex-1 border-red-400/50 text-red-400 hover:bg-red-400/10">
-                      <X className="w-4 h-4 mr-2" />
+                    <GoldButton
+                      variant="outline"
+                      className="flex-1 border-red-400/50 text-red-400 hover:bg-red-400/10"
+                      disabled={actionLoading === selectedSubmission.id}
+                      onClick={() => handleAction(selectedSubmission.id, "reject")}
+                    >
+                      {actionLoading === selectedSubmission.id ? (
+                        <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                      ) : (
+                        <X className="w-4 h-4 mr-2" />
+                      )}
                       Reject Submission
                     </GoldButton>
+                  </div>
+                )}
+                {selectedSubmission.status === "active" && (
+                  <div className="flex gap-3">
+                    <GoldButton
+                      className="flex-1"
+                      disabled={actionLoading === selectedSubmission.id}
+                      onClick={() => handleAction(selectedSubmission.id, "complete")}
+                    >
+                      {actionLoading === selectedSubmission.id ? (
+                        <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                      ) : (
+                        <Check className="w-4 h-4 mr-2" />
+                      )}
+                      Mark as Complete
+                    </GoldButton>
+                  </div>
+                )}
+                {(selectedSubmission.status === "completed" || selectedSubmission.status === "rejected") && (
+                  <div className="bg-luxury-lighter rounded-lg p-4 text-center">
+                    <p className="text-luxury-gray text-sm">
+                      This submission is {selectedSubmission.status}. No further actions available.
+                    </p>
                   </div>
                 )}
               </div>

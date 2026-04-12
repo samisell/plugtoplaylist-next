@@ -39,14 +39,13 @@ export interface GoldButtonProps
   asChild?: boolean;
   loading?: boolean;
   icon?: React.ReactNode;
-          onClick?: React.MouseEventHandler<HTMLButtonElement>;
-  onClick?: React.MouseEventHandler<HTMLButtonElement>;
 }
 
 const GoldButton = React.forwardRef<HTMLButtonElement, GoldButtonProps>(
   ({ className, variant, size, asChild = false, loading, icon, children, disabled, onClick, ...props }, ref) => {
     const Comp = asChild ? Slot : "button";
     const [isClicked, setIsClicked] = React.useState(false);
+    const isSubmit = (props as any).type === "submit";
 
     const handleClick = (e: React.MouseEvent<HTMLButtonElement>) => {
       if (isClicked) return;
@@ -57,12 +56,15 @@ const GoldButton = React.forwardRef<HTMLButtonElement, GoldButtonProps>(
       setTimeout(() => setIsClicked(false), 1000);
     };
 
+    // For submit buttons, use default behavior to allow form submission
+    const clickHandler = isSubmit ? onClick : handleClick;
+
     return (
       <Comp
         className={cn(goldButtonVariants({ variant, size, className }))}
         ref={ref}
         disabled={disabled || loading || isClicked}
-        onClick={handleClick}
+        onClick={clickHandler}
         {...props}
       >
         {loading ? (

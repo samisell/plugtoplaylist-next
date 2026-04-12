@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createAdminClient } from "@/lib/supabase/admin";
-import { sendPaymentConfirmationEmail, sendNewPaymentAdminNotification } from "@/lib/email";
 import Stripe from "stripe";
+import { db } from "@/lib/db";
+import { sendPaymentConfirmationEmail, sendNewPaymentAdminNotification } from "@/lib/email";
 
 export const dynamic = "force-dynamic";
 
@@ -9,7 +9,6 @@ const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!);
 const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET!;
 
 export async function POST(request: NextRequest) {
-  const adminClient = createAdminClient();
   const signature = request.headers.get("stripe-signature");
   const body = await request.text();
 
@@ -22,63 +21,40 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: `Webhook Error: ${err.message}` }, { status: 400 });
   }
 
-  console.log(`Processing Stripe event: ${event.type}`);
-
   if (event.type === "checkout.session.completed") {
     const session = event.data.object as Stripe.Checkout.Session;
-    const { submissionId } = session.metadata!;
+    const submissionId = session.metadata?.submissionId;
 
     if (!submissionId) {
-        console.error("No submissionId in session metadata");
-        return NextResponse.json({ error: "No submissionId" }, { status: 400 });
+      return NextResponse.json({ error: "No submissionId" }, { status: 400 });
     }
 
     try {
-      // 1. Update Payment Record (SnakeCase Sync)
-      // Use submission_id to find the payment record
-      const { data: payment, error: paymentError } = await (adminClient
-        .from("payments") // Use plural
-        .update({
-          status: "completed",
-          paid_at: new Date().toISOString(),
-          gateway_reference: session.payment_intent as string,
-          metadata: { 
-            ...(session.metadata || {}),
-            stripe_session_id: session.id 
-          }
-        } as any)
-        .eq("submission_id", submissionId)
-        .select(`*, submission:submissions(track_title, user_id)`)
-        .single() as any);
+      const payment = await db.payment.update({
+        where: { submissionId },
+        data: {
+          status: "paid",
+          paidAt: new Date(),
+          providerRef: String(session.payment_intent || session.id),
+        },
+      });
 
-      if (paymentError) {
-        console.error("Payment update error:", paymentError);
-        // Fallback or retry logic can go here
-        return NextResponse.json({ error: "Payment record update failed" }, { status: 500 });
-      }
+      await db.submission.update({
+        where: { id: submissionId },
+        data: {
+          status: "active",
+          paymentStatus: "paid",
+        },
+      });
 
-      // 2. Update Submission Status (SnakeCase Sync)
-      // Transition from 'pending' to 'under_review' upon payment
-      const { error: subError } = await (adminClient
-        .from("submissions")
-        .update({
-          status: "under_review" // Using valid SubmissionStatus enum
-        } as any)
-        .eq("id", submissionId) as any);
-
-      if (subError) {
-        console.error("Submission status update error:", subError);
-      }
-
-      // 3. Communications
       const userEmail = session.customer_details?.email;
       if (userEmail) {
-        await sendPaymentConfirmationEmail(userEmail, (payment as any).amount, (payment as any).currency);
+        await sendPaymentConfirmationEmail(userEmail, payment.amount, payment.currency);
       }
-      
-      await sendNewPaymentAdminNotification((payment as any).id, (payment as any).amount, (payment as any).currency);
 
-      return NextResponse.json({ status: "success", paymentId: (payment as any).id });
+      await sendNewPaymentAdminNotification(payment.id, payment.amount, payment.currency);
+
+      return NextResponse.json({ status: "success", paymentId: payment.id });
     } catch (error) {
       console.error("Error processing Stripe webhook success:", error);
       return NextResponse.json({ error: "Internal processing failure" }, { status: 500 });

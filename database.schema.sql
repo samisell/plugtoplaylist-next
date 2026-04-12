@@ -126,3 +126,18 @@ ALTER TABLE "Payment" ADD CONSTRAINT "Payment_userId_fkey" FOREIGN KEY ("userId"
 ALTER TABLE "Payment" ADD CONSTRAINT "Payment_submissionId_fkey" FOREIGN KEY ("submissionId") REFERENCES "Submission"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 -- AddForeignKey
 ALTER TABLE "Referral" ADD CONSTRAINT "Referral_referrerId_fkey" FOREIGN KEY ("referrerId") REFERENCES "User"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+
+-- ===========================================
+-- PRODUCTION DEFAULT ADMIN USERS
+-- ===========================================
+-- ⚠️  IMPORTANT: Change these credentials after first login
+-- Default admin accounts for initial deployment
+
+INSERT INTO "User" ("id", "email", "name", "password", "role", "referralCode", "referralEarnings", "createdAt", "updatedAt")
+VALUES 
+  ('cmnuqlgla00004pv0gmogf46o', 'admin@plugtoplaylist.com', 'Admin User', '$2b$10$VCcol7HDh.8Rk98.29gHwuCmaDt28ypwHzAmcRefnsUQMkB0169ba', 'admin', '3DE3D92A', 0, NOW(), NOW()),
+  ('cmnuqlh2a00014pv01930ng3m', 'support@plugtoplaylist.com', 'Support Admin', '$2b$10$S.7b.T9DJS8Kyno84dB/EOSFCkTCq7ATJEJzQyFdEtvrktpPDw1fS', 'admin', '1E8BCD55', 0, NOW(), NOW())
+ON DUPLICATE KEY UPDATE 
+  "name" = VALUES("name"), 
+  "password" = VALUES("password"), 
+  "role" = VALUES("role");

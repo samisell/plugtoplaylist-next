@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   Users,
@@ -22,6 +22,7 @@ import {
   Eye,
   Plus,
   Filter,
+  Loader2,
 } from "lucide-react";
 import { AdminLayout, StatCard, DataTable, FilterBadge } from "@/components/admin/AdminLayout";
 import { GoldButton, StatusBadge } from "@/components/shared";
@@ -29,87 +30,19 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
-const stats = [
-  { title: "Total Users", value: "2,847", change: "+12.5%", icon: Users, color: "gold" as const },
-  { title: "Active Users", value: "1,923", change: "+8.2%", icon: CheckCircle2, color: "green" as const },
-  { title: "Premium Users", value: "342", change: "+15", icon: Shield, color: "orange" as const },
-  { title: "Total Revenue", value: "$89,450", change: "+23.1%", icon: DollarSign, color: "blue" as const },
-];
-
-const mockUsers = [
-  {
-    id: "user_1",
-    name: "Alex Rivera",
-    email: "alex@email.com",
-    avatar: "https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=100&h=100&fit=crop",
-    role: "user",
-    status: "active",
-    submissions: 12,
-    spent: 747,
-    joinedAt: "2023-06-15",
-    lastActive: "2024-01-21",
-  },
-  {
-    id: "user_2",
-    name: "Maya Thompson",
-    email: "maya@email.com",
-    avatar: "https://images.unsplash.com/photo-1438761681033-6461ffad8d80?w=100&h=100&fit=crop",
-    role: "premium",
-    status: "active",
-    submissions: 28,
-    spent: 2847,
-    joinedAt: "2023-04-20",
-    lastActive: "2024-01-20",
-  },
-  {
-    id: "user_3",
-    name: "Jordan Blake",
-    email: "jordan@email.com",
-    avatar: "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=100&h=100&fit=crop",
-    role: "user",
-    status: "inactive",
-    submissions: 5,
-    spent: 245,
-    joinedAt: "2023-08-10",
-    lastActive: "2024-01-15",
-  },
-  {
-    id: "user_4",
-    name: "Nina Santos",
-    email: "nina@email.com",
-    avatar: "https://images.unsplash.com/photo-1494790108755-2616b612b786?w=100&h=100&fit=crop",
-    role: "premium",
-    status: "active",
-    submissions: 45,
-    spent: 5230,
-    joinedAt: "2023-02-28",
-    lastActive: "2024-01-21",
-  },
-  {
-    id: "user_5",
-    name: "Marcus Chen",
-    email: "marcus@email.com",
-    avatar: "https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=100&h=100&fit=crop",
-    role: "user",
-    status: "suspended",
-    submissions: 3,
-    spent: 147,
-    joinedAt: "2023-10-05",
-    lastActive: "2024-01-10",
-  },
-  {
-    id: "user_6",
-    name: "Sophie Williams",
-    email: "sophie@email.com",
-    avatar: "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=100&h=100&fit=crop",
-    role: "admin",
-    status: "active",
-    submissions: 0,
-    spent: 0,
-    joinedAt: "2023-01-01",
-    lastActive: "2024-01-21",
-  },
-];
+interface User {
+  id: string;
+  name: string;
+  email: string;
+  avatar: string;
+  role: "user" | "premium" | "admin";
+  status: "active" | "inactive" | "suspended";
+  submissions: number;
+  spent: number;
+  joinedAt: string;
+  lastActive: string;
+  totalSpent: number;
+}
 
 const roleFilters = [
   { label: "All", value: "all" },
@@ -121,15 +54,86 @@ const roleFilters = [
 export default function AdminUsersPage() {
   const [searchQuery, setSearchQuery] = useState("");
   const [roleFilter, setRoleFilter] = useState("all");
-  const [selectedUser, setSelectedUser] = useState<typeof mockUsers[0] | null>(null);
-
-  const filteredUsers = mockUsers.filter((user) => {
-    const matchesSearch =
-      user.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      user.email.toLowerCase().includes(searchQuery.toLowerCase());
-    const matchesRole = roleFilter === "all" || user.role === roleFilter;
-    return matchesSearch && matchesRole;
+  const [selectedUser, setSelectedUser] = useState<User | null>(null);
+  const [users, setUsers] = useState<User[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [stats, setStats] = useState({
+    totalUsers: 0,
+    activeUsers: 0,
+    premiumUsers: 0,
+    totalRevenue: 0,
   });
+  const [pagination, setPagination] = useState({
+    page: 1,
+    limit: 20,
+    total: 0,
+    pages: 0,
+  });
+
+  useEffect(() => {
+    fetchUsers();
+  }, [roleFilter, pagination.page]);
+
+  const fetchUsers = async () => {
+    try {
+      setLoading(true);
+      const params = new URLSearchParams({
+        page: pagination.page.toString(),
+        limit: pagination.limit.toString(),
+        role: roleFilter,
+        ...(searchQuery && { search: searchQuery }),
+      });
+
+      const response = await fetch(`/api/admin/users?${params}`);
+      const data = await response.json();
+
+      if (response.ok) {
+        setUsers(data.users);
+        setPagination(data.pagination);
+        setStats(data.stats);
+      }
+    } catch (error) {
+      console.error("Failed to fetch users:", error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleSearch = (query: string) => {
+    setSearchQuery(query);
+    setPagination({ ...pagination, page: 1 });
+  };
+
+  const formattedStats = [
+    {
+      title: "Total Users",
+      value: stats.totalUsers.toString(),
+      change: "+12.5%",
+      icon: Users,
+      color: "gold" as const,
+    },
+    {
+      title: "Active Users",
+      value: stats.activeUsers.toString(),
+      change: "+8.2%",
+      icon: CheckCircle2,
+      color: "green" as const,
+    },
+    {
+      title: "Premium Users",
+      value: stats.premiumUsers.toString(),
+      change: "+15",
+      icon: Shield,
+      color: "orange" as const,
+    },
+    {
+      title: "Total Revenue",
+      value: `£${stats.totalRevenue.toLocaleString()}`,
+      change: "+23.1%",
+      icon: DollarSign,
+      color: "blue" as const,
+    },
+  ];
 
   const getRoleBadge = (role: string) => {
     switch (role) {
@@ -159,7 +163,7 @@ export default function AdminUsersPage() {
     {
       key: "user",
       label: "User",
-      render: (_: unknown, row: typeof mockUsers[0]) => (
+      render: (_: unknown, row: User) => (
         <div className="flex items-center gap-3">
           <img src={row.avatar} alt={row.name} className="w-10 h-10 rounded-full object-cover" />
           <div>
@@ -187,7 +191,7 @@ export default function AdminUsersPage() {
     {
       key: "spent",
       label: "Total Spent",
-      render: (value: unknown) => <span className="text-gold font-medium">${String(value)}</span>,
+      render: (value: unknown) => <span className="text-gold font-medium">£{String((value as number).toLocaleString())}</span>,
     },
     {
       key: "joinedAt",
@@ -197,7 +201,7 @@ export default function AdminUsersPage() {
     {
       key: "actions",
       label: "",
-      render: (_: unknown, row: typeof mockUsers[0]) => (
+      render: (_: unknown, row: User) => (
         <div className="flex items-center justify-end gap-1">
           <Button
             variant="ghost"
@@ -237,7 +241,7 @@ export default function AdminUsersPage() {
     >
       {/* Stats */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-        {stats.map((stat, index) => (
+        {formattedStats.map((stat, index) => (
           <motion.div
             key={stat.title}
             initial={{ opacity: 0, y: 20 }}
@@ -256,7 +260,7 @@ export default function AdminUsersPage() {
           <Input
             placeholder="Search by name or email..."
             value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
+            onChange={(e) => handleSearch(e.target.value)}
             className="bg-luxury-dark border-gold/20 focus:border-gold h-10 pl-10 text-white placeholder:text-luxury-gray"
           />
         </div>
@@ -278,24 +282,44 @@ export default function AdminUsersPage() {
         animate={{ opacity: 1, y: 0 }}
         transition={{ delay: 0.2 }}
       >
-        <DataTable
-          columns={columns}
-          data={filteredUsers}
-          onRowClick={(row) => setSelectedUser(row as typeof mockUsers[0])}
-        />
+        {loading ? (
+          <div className="flex items-center justify-center h-64">
+            <Loader2 className="w-8 h-8 animate-spin text-gold" />
+          </div>
+        ) : (
+          <DataTable
+            columns={columns}
+            data={users}
+            onRowClick={(row) => setSelectedUser(row as User)}
+          />
+        )}
       </motion.div>
 
       {/* Pagination */}
       <div className="flex items-center justify-between mt-4">
         <p className="text-sm text-luxury-gray">
-          Showing {filteredUsers.length} of {mockUsers.length} users
+          Showing {users.length} of {pagination.total} users
         </p>
         <div className="flex items-center gap-2">
-          <Button variant="outline" size="sm" className="border-gold/20 text-luxury-gray hover:text-white">
+          <Button
+            variant="outline"
+            size="sm"
+            className="border-gold/20 text-luxury-gray hover:text-white"
+            disabled={pagination.page === 1}
+            onClick={() => setPagination({ ...pagination, page: pagination.page - 1 })}
+          >
             <ChevronLeft className="w-4 h-4" />
           </Button>
-          <span className="text-sm text-white">1 of 50</span>
-          <Button variant="outline" size="sm" className="border-gold/20 text-luxury-gray hover:text-white">
+          <span className="text-sm text-white">
+            {pagination.page} of {pagination.pages}
+          </span>
+          <Button
+            variant="outline"
+            size="sm"
+            className="border-gold/20 text-luxury-gray hover:text-white"
+            disabled={pagination.page === pagination.pages}
+            onClick={() => setPagination({ ...pagination, page: pagination.page + 1 })}
+          >
             <ChevronRight className="w-4 h-4" />
           </Button>
         </div>
@@ -356,7 +380,7 @@ export default function AdminUsersPage() {
                     <div className="text-xs text-luxury-gray">Submissions</div>
                   </div>
                   <div className="bg-luxury-black/50 rounded-lg p-3 text-center">
-                    <div className="text-2xl font-bold text-gold">${selectedUser.spent}</div>
+                    <div className="text-2xl font-bold text-gold">£{selectedUser.spent.toLocaleString()}</div>
                     <div className="text-xs text-luxury-gray">Total Spent</div>
                   </div>
                   <div className="bg-luxury-black/50 rounded-lg p-3 text-center">

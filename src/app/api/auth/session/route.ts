@@ -1,17 +1,38 @@
 import { NextResponse } from "next/server";
-import { createClient } from "@/lib/supabase/server";
+import { cookies } from "next/headers";
+import { db } from "@/lib/db";
 
 export const dynamic = "force-dynamic";
 
-// GET - Returns the current logged-in user's session data
+const SESSION_COOKIE = "ptp_user_id";
+
 export async function GET() {
   try {
-    const supabase = await createClient();
-    const { data: { user }, error } = await supabase.auth.getUser();
-    if (error || !user) {
+    const cookieStore = cookies();
+    const userId = cookieStore.get(SESSION_COOKIE)?.value;
+
+    if (!userId) {
       return NextResponse.json({ user: null }, { status: 200 });
     }
-    return NextResponse.json({ user: { id: user.id, email: user.email, name: user.user_metadata?.full_name } });
+
+    const user = await db.user.findUnique({ where: { id: userId } });
+    if (!user) {
+      return NextResponse.json({ user: null }, { status: 200 });
+    }
+
+    return NextResponse.json({
+      user: {
+        id: user.id,
+        email: user.email,
+        name: user.name,
+        display_name: user.name,
+        role: user.role,
+        metadata: {
+          referral_code: user.referralCode,
+          referralCode: user.referralCode,
+        },
+      },
+    });
   } catch (error) {
     console.error("Session error:", error);
     return NextResponse.json({ user: null }, { status: 200 });

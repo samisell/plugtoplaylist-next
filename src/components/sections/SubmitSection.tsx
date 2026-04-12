@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 import { motion, AnimatePresence } from "framer-motion";
 import { 
   Link2, 
@@ -10,7 +11,8 @@ import {
   Loader2, 
   CheckCircle2,
   AlertCircle,
-  ChevronRight
+  ChevronRight,
+  Zap
 } from "lucide-react";
 import { GoldButton, GlowCard, GlowCardContent, GlowCardHeader, GlowCardTitle } from "@/components/shared";
 import { Input } from "@/components/ui/input";
@@ -153,9 +155,21 @@ export function SubmitSection() {
           <h2 className="text-3xl md:text-4xl lg:text-5xl font-bold text-white mb-4">
             Submit Your <span className="text-gold">Music</span>
           </h2>
-          <p className="text-lg text-luxury-gray max-w-2xl mx-auto">
+          <p className="text-lg text-luxury-gray max-w-2xl mx-auto mb-8">
             Paste your Spotify or YouTube link and we'll automatically fetch your track details.
           </p>
+          
+          {/* Quick Submit CTA */}
+          <div className="flex flex-col sm:flex-row items-center justify-center gap-4 mb-8">
+            <p className="text-luxury-gray text-sm">💨 In a hurry?</p>
+            <Link href="/submit/quick">
+              <button className="inline-flex items-center gap-2 px-4 py-2 bg-gold/10 border border-gold/50 text-gold font-semibold rounded-lg hover:bg-gold/20 hover:border-gold transition-all">
+                <Zap className="w-4 h-4" />
+                Fast Guest Submission (30 sec)
+                <ChevronRight className="w-4 h-4" />
+              </button>
+            </Link>
+          </div>
         </motion.div>
 
         {/* Progress Steps */}

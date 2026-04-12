@@ -1,16 +1,3 @@
-import { createClient as createSupabaseClient } from '@supabase/supabase-js'
-import { Database } from '@/lib/supabase/database.types'
-
 export function createClient() {
-  return createSupabaseClient<Database>(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-    {
-      auth: {
-        persistSession: true,
-        autoRefreshToken: true,
-        detectSessionInUrl: true,
-      },
-    }
-  )
+  throw new Error("Supabase auth client has been removed. Use /api/auth endpoints instead.");
 }

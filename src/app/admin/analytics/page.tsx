@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { motion } from "framer-motion";
 import {
   TrendingUp,
@@ -17,57 +17,93 @@ import {
   Monitor,
   Smartphone,
   Tablet,
+  Loader2,
 } from "lucide-react";
 import { AdminLayout, StatCard } from "@/components/admin/AdminLayout";
 import { GoldButton, GlowCard } from "@/components/shared";
 import { cn } from "@/lib/utils";
 
-const stats = [
-  { title: "Total Revenue", value: "$89,450", change: "+23.1%", isPositive: true, icon: DollarSign, color: "gold" as const },
-  { title: "Total Users", value: "2,847", change: "+12.5%", isPositive: true, icon: Users, color: "green" as const },
-  { title: "Submissions", value: "1,247", change: "+8.2%", isPositive: true, icon: Music, color: "orange" as const },
-  { title: "Conversion Rate", value: "3.2%", change: "-0.5%", isPositive: false, icon: Activity, color: "blue" as const },
-];
+interface AnalyticsData {
+  stats: Array<{
+    title: string;
+    value: string;
+    change: string;
+    isPositive: boolean;
+    icon: string;
+    color: string;
+  }>;
+  monthlyData: Array<{ month: string; value: number; users: number }>;
+  platformData: Array<{ name: string; value: number; color: string }>;
+  topCountries: Array<{ name: string; value: number; flag: string }>;
+  deviceData: Array<{ name: string; value: number; icon: string }>;
+  topSubmissions: Array<{ name: string; artist: string; streams: string; growth: string }>;
+  recentActivity: Array<{ action: string; user: string; time: string; type: string }>;
+}
 
-const revenueData = [
-  { month: "Jan", value: 18500, users: 380 },
-  { month: "Feb", value: 22000, users: 450 },
-  { month: "Mar", value: 19500, users: 420 },
-  { month: "Apr", value: 28000, users: 580 },
-  { month: "May", value: 32000, users: 650 },
-  { month: "Jun", value: 24850, users: 520 },
-];
-
-const platformData = [
-  { name: "Spotify", value: 68, color: "#1DB954" },
-  { name: "YouTube", value: 32, color: "#FF0000" },
-];
-
-const deviceData = [
-  { name: "Desktop", value: 58, icon: Monitor },
-  { name: "Mobile", value: 35, icon: Smartphone },
-  { name: "Tablet", value: 7, icon: Tablet },
-];
-
-const topCountries = [
-  { name: "United States", value: 45, flag: "🇺🇸" },
-  { name: "United Kingdom", value: 18, flag: "🇬🇧" },
-  { name: "Nigeria", value: 12, flag: "🇳🇬" },
-  { name: "Canada", value: 8, flag: "🇨🇦" },
-  { name: "Germany", value: 6, flag: "🇩🇪" },
-  { name: "Others", value: 11, flag: "🌍" },
-];
-
-const topTracks = [
-  { name: "Blinding Lights", artist: "The Weeknd", streams: "125.4K", growth: "+45%" },
-  { name: "Shape of You", artist: "Ed Sheeran", streams: "98.2K", growth: "+32%" },
-  { name: "Levitating", artist: "Dua Lipa", streams: "87.6K", growth: "+28%" },
-  { name: "Stay", artist: "Kid Laroi", streams: "76.3K", growth: "+22%" },
-  { name: "Peaches", artist: "Justin Bieber", streams: "65.8K", growth: "+18%" },
-];
+const iconMap: Record<string, any> = {
+  DollarSign,
+  Users,
+  Music,
+  Activity,
+  Monitor,
+  Smartphone,
+  Tablet,
+};
 
 export default function AdminAnalyticsPage() {
   const [timeRange, setTimeRange] = useState("6m");
+  const [loading, setLoading] = useState(true);
+  const [analyticsData, setAnalyticsData] = useState<AnalyticsData | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    fetchAnalytics();
+  }, [timeRange]);
+
+  const fetchAnalytics = async () => {
+    try {
+      setLoading(true);
+      setError(null);
+      const response = await fetch(`/api/admin/analytics?timeRange=${timeRange}`);
+
+      if (!response.ok) {
+        throw new Error("Failed to fetch analytics");
+      }
+
+      const data = await response.json();
+      setAnalyticsData(data);
+    } catch (err) {
+      console.error("Analytics error:", err);
+      setError("Failed to load analytics data");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  if (loading) {
+    return (
+      <AdminLayout title="Analytics" subtitle="Track platform performance and insights">
+        <div className="flex items-center justify-center h-96">
+          <Loader2 className="w-8 h-8 animate-spin text-gold" />
+        </div>
+      </AdminLayout>
+    );
+  }
+
+  if (error || !analyticsData) {
+    return (
+      <AdminLayout title="Analytics" subtitle="Track platform performance and insights">
+        <div className="text-center text-red-400">Error: {error || "No data available"}</div>
+      </AdminLayout>
+    );
+  }
+
+  const stats = analyticsData.stats;
+  const revenueData = analyticsData.monthlyData;
+  const platformData = analyticsData.platformData;
+  const deviceData = analyticsData.deviceData;
+  const topCountries = analyticsData.topCountries;
+  const topTracks = analyticsData.topSubmissions || [];
 
   const maxRevenue = Math.max(...revenueData.map((d) => d.value));
 
@@ -96,16 +132,23 @@ export default function AdminAnalyticsPage() {
     >
       {/* Stats */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-        {stats.map((stat, index) => (
-          <motion.div
-            key={stat.title}
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: index * 0.05 }}
-          >
-            <StatCard {...stat} />
-          </motion.div>
-        ))}
+        {stats.map((stat, index) => {
+          const Icon = iconMap[stat.icon];
+          return (
+            <motion.div
+              key={stat.title}
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: index * 0.05 }}
+            >
+              <StatCard
+                {...stat}
+                icon={Icon}
+                color={stat.color as "gold" | "green" | "orange" | "blue"}
+              />
+            </motion.div>
+          );
+        })}
       </div>
 
       {/* Main Charts */}
@@ -125,22 +168,30 @@ export default function AdminAnalyticsPage() {
 
           {/* Chart */}
           <div className="flex items-end justify-between h-48 gap-4">
-            {revenueData.map((item, index) => (
-              <div key={item.month} className="flex-1 flex flex-col items-center gap-2">
-                <div className="w-full relative" style={{ height: `${(item.value / maxRevenue) * 100}%` }}>
-                  <motion.div
-                    initial={{ height: 0 }}
-                    animate={{ height: "100%" }}
-                    transition={{ delay: index * 0.1, duration: 0.5 }}
-                    className="absolute bottom-0 w-full bg-gradient-to-t from-gold to-gold/50 rounded-t"
-                  />
-                  <div className="absolute -top-6 left-1/2 -translate-x-1/2 text-xs text-white font-medium">
-                    ${(item.value / 1000).toFixed(0)}K
+            {analyticsData.monthlyData.length > 0 ? (
+              analyticsData.monthlyData.map((item, index) => {
+                const maxRevenue = Math.max(...analyticsData.monthlyData.map((d) => d.value));
+                const percentage = maxRevenue > 0 ? (item.value / maxRevenue) * 100 : 0;
+                return (
+                  <div key={item.month} className="flex-1 flex flex-col items-center gap-2">
+                    <div className="w-full relative" style={{ height: `${percentage}%`, minHeight: "20px" }}>
+                      <motion.div
+                        initial={{ height: 0 }}
+                        animate={{ height: "100%" }}
+                        transition={{ delay: index * 0.1, duration: 0.5 }}
+                        className="absolute bottom-0 w-full bg-gradient-to-t from-gold to-gold/50 rounded-t"
+                      />
+                      <div className="absolute -top-6 left-1/2 -translate-x-1/2 text-xs text-white font-medium whitespace-nowrap">
+                        £{(item.value / 1000).toFixed(1)}K
+                      </div>
+                    </div>
+                    <span className="text-xs text-luxury-gray">{item.month}</span>
                   </div>
-                </div>
-                <span className="text-xs text-luxury-gray">{item.month}</span>
-              </div>
-            ))}
+                );
+              })
+            ) : (
+              <div className="w-full text-center text-luxury-gray">No data available</div>
+            )}
           </div>
 
           {/* Legend */}
@@ -168,9 +219,9 @@ export default function AdminAnalyticsPage() {
                 cy="80"
                 r="60"
                 fill="none"
-                stroke="#1DB954"
+                stroke={analyticsData.platformData[0]?.color || "#1DB954"}
                 strokeWidth="20"
-                strokeDasharray={`${platformData[0].value * 3.77} ${100 * 3.77}`}
+                strokeDasharray={`${analyticsData.platformData[0]?.value * 3.77 || 0} ${100 * 3.77}`}
                 strokeDashoffset="0"
               />
               <circle
@@ -178,15 +229,17 @@ export default function AdminAnalyticsPage() {
                 cy="80"
                 r="60"
                 fill="none"
-                stroke="#FF0000"
+                stroke={analyticsData.platformData[1]?.color || "#FF0000"}
                 strokeWidth="20"
-                strokeDasharray={`${platformData[1].value * 3.77} ${100 * 3.77}`}
-                strokeDashoffset={`-${platformData[0].value * 3.77}`}
+                strokeDasharray={`${analyticsData.platformData[1]?.value * 3.77 || 0} ${100 * 3.77}`}
+                strokeDashoffset={`-${analyticsData.platformData[0]?.value * 3.77 || 0}`}
               />
             </svg>
             <div className="absolute inset-0 flex items-center justify-center">
               <div className="text-center">
-                <div className="text-2xl font-bold text-white">1,247</div>
+                <div className="text-2xl font-bold text-white">
+                  {analyticsData.recentActivity?.length || 0}
+                </div>
                 <div className="text-xs text-luxury-gray">Total</div>
               </div>
             </div>
@@ -194,7 +247,7 @@ export default function AdminAnalyticsPage() {
 
           {/* Legend */}
           <div className="space-y-3">
-            {platformData.map((platform) => (
+            {analyticsData.platformData.map((platform) => (
               <div key={platform.name} className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
                   <div
@@ -219,25 +272,28 @@ export default function AdminAnalyticsPage() {
             Device Breakdown
           </h3>
           <div className="space-y-4">
-            {deviceData.map((device) => (
-              <div key={device.name}>
-                <div className="flex items-center justify-between mb-1.5">
-                  <div className="flex items-center gap-2">
-                    <device.icon className="w-4 h-4 text-luxury-gray" />
-                    <span className="text-sm text-white">{device.name}</span>
+            {analyticsData.deviceData.map((device) => {
+              const IconComponent = iconMap[device.icon] || Monitor;
+              return (
+                <div key={device.name}>
+                  <div className="flex items-center justify-between mb-1.5">
+                    <div className="flex items-center gap-2">
+                      <IconComponent className="w-4 h-4 text-luxury-gray" />
+                      <span className="text-sm text-white">{device.name}</span>
+                    </div>
+                    <span className="text-sm font-medium text-gold">{device.value}%</span>
                   </div>
-                  <span className="text-sm font-medium text-gold">{device.value}%</span>
+                  <div className="h-2 bg-luxury-lighter rounded-full overflow-hidden">
+                    <motion.div
+                      initial={{ width: 0 }}
+                      animate={{ width: `${device.value}%` }}
+                      transition={{ duration: 0.5 }}
+                      className="h-full bg-gold rounded-full"
+                    />
+                  </div>
                 </div>
-                <div className="h-2 bg-luxury-lighter rounded-full overflow-hidden">
-                  <motion.div
-                    initial={{ width: 0 }}
-                    animate={{ width: `${device.value}%` }}
-                    transition={{ duration: 0.5 }}
-                    className="h-full bg-gold rounded-full"
-                  />
-                </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         </GlowCard>
 
@@ -248,7 +304,7 @@ export default function AdminAnalyticsPage() {
             Top Countries
           </h3>
           <div className="space-y-3">
-            {topCountries.map((country) => (
+            {analyticsData.topCountries.map((country) => (
               <div key={country.name} className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
                   <span className="text-lg">{country.flag}</span>
@@ -267,21 +323,25 @@ export default function AdminAnalyticsPage() {
             Top Performing Tracks
           </h3>
           <div className="space-y-3">
-            {topTracks.map((track, index) => (
-              <div key={track.name} className="flex items-center gap-3">
-                <div className="w-6 h-6 rounded bg-gold/20 flex items-center justify-center text-xs font-medium text-gold">
-                  {index + 1}
+            {topTracks.length > 0 ? (
+              topTracks.map((track, index) => (
+                <div key={track.name} className="flex items-center gap-3">
+                  <div className="w-6 h-6 rounded bg-gold/20 flex items-center justify-center text-xs font-medium text-gold">
+                    {index + 1}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="text-sm font-medium text-white truncate">{track.name}</div>
+                    <div className="text-xs text-luxury-gray truncate">{track.artist}</div>
+                  </div>
+                  <div className="text-right">
+                    <div className="text-sm font-medium text-gold">{track.streams}</div>
+                    <div className="text-xs text-green-400">{track.growth}</div>
+                  </div>
                 </div>
-                <div className="flex-1 min-w-0">
-                  <div className="text-sm font-medium text-white truncate">{track.name}</div>
-                  <div className="text-xs text-luxury-gray truncate">{track.artist}</div>
-                </div>
-                <div className="text-right">
-                  <div className="text-sm font-medium text-gold">{track.streams}</div>
-                  <div className="text-xs text-green-400">{track.growth}</div>
-                </div>
-              </div>
-            ))}
+              ))
+            ) : (
+              <div className="text-center text-luxury-gray py-4">No submissions yet</div>
+            )}
           </div>
         </GlowCard>
       </div>
@@ -297,35 +357,33 @@ export default function AdminAnalyticsPage() {
         </div>
 
         <div className="space-y-4">
-          {[
-            { action: "New submission", user: "alex@email.com", time: "2 minutes ago", type: "success" },
-            { action: "Payment received", user: "maya@email.com", time: "15 minutes ago", type: "success" },
-            { action: "User registered", user: "john@email.com", time: "1 hour ago", type: "info" },
-            { action: "Campaign completed", user: "sophie@email.com", time: "2 hours ago", type: "success" },
-            { action: "Refund processed", user: "marcus@email.com", time: "3 hours ago", type: "warning" },
-          ].map((activity, index) => (
-            <motion.div
-              key={index}
-              initial={{ opacity: 0, x: -20 }}
-              animate={{ opacity: 1, x: 0 }}
-              transition={{ delay: index * 0.05 }}
-              className="flex items-center gap-4 p-3 bg-luxury-lighter/50 rounded-lg"
-            >
-              <div
-                className={cn(
-                  "w-2 h-2 rounded-full",
-                  activity.type === "success" && "bg-green-400",
-                  activity.type === "info" && "bg-blue-400",
-                  activity.type === "warning" && "bg-brand-orange"
-                )}
-              />
-              <div className="flex-1">
-                <div className="text-sm text-white">{activity.action}</div>
-                <div className="text-xs text-luxury-gray">{activity.user}</div>
-              </div>
-              <span className="text-xs text-luxury-gray">{activity.time}</span>
-            </motion.div>
-          ))}
+          {analyticsData.recentActivity.length > 0 ? (
+            analyticsData.recentActivity.map((activity, index) => (
+              <motion.div
+                key={index}
+                initial={{ opacity: 0, x: -20 }}
+                animate={{ opacity: 1, x: 0 }}
+                transition={{ delay: index * 0.05 }}
+                className="flex items-center gap-4 p-3 bg-luxury-lighter/50 rounded-lg"
+              >
+                <div
+                  className={cn(
+                    "w-2 h-2 rounded-full",
+                    activity.type === "success" && "bg-green-400",
+                    activity.type === "info" && "bg-blue-400",
+                    activity.type === "warning" && "bg-brand-orange"
+                  )}
+                />
+                <div className="flex-1">
+                  <div className="text-sm text-white">{activity.action}</div>
+                  <div className="text-xs text-luxury-gray">{activity.user}</div>
+                </div>
+                <span className="text-xs text-luxury-gray">{activity.time}</span>
+              </motion.div>
+            ))
+          ) : (
+            <div className="text-center text-luxury-gray py-8">No recent activity</div>
+          )}
         </div>
       </GlowCard>
     </AdminLayout>

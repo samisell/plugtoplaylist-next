@@ -15,7 +15,6 @@ import {
   InputOTPSlot,
 } from "@/components/ui/input-otp";
 import { useToast } from "@/hooks/use-toast";
-import { createClient } from "@/app/api/auth/client";
 
 const benefits = [
   "Track all your submissions in one place",
@@ -25,7 +24,6 @@ const benefits = [
 ];
 
 export default function RegisterPage() {
-  const supabase = createClient();
   const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [isOtpLoading, setIsOtpLoading] = useState(false);
@@ -37,12 +35,36 @@ export default function RegisterPage() {
     password: "",
     confirmPassword: "",
   });
+  const [agreeToTerms, setAgreeToTerms] = useState(false);
   const [showOtpForm, setShowOtpForm] = useState(false);
   const [otp, setOtp] = useState("");
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    console.log("[Register] Form submitted", formData);
+    
+    if (!formData.name || !formData.email || !formData.password || !formData.confirmPassword) {
+      console.log("[Register] Form validation failed - missing fields");
+      toast({
+        title: "Error",
+        description: "Please fill in all fields",
+        variant: "destructive",
+      });
+      return;
+    }
+    
+    if (!agreeToTerms) {
+      console.log("[Register] Must agree to terms");
+      toast({
+        title: "Error",
+        description: "You must agree to the Terms of Service and Privacy Policy",
+        variant: "destructive",
+      });
+      return;
+    }
+    
     if (formData.password !== formData.confirmPassword) {
+      console.log("[Register] Passwords do not match");
       toast({
         title: "Error",
         description: "Passwords do not match",
@@ -50,7 +72,9 @@ export default function RegisterPage() {
       });
       return;
     }
+    
     setIsLoading(true);
+    console.log("[Register] Starting signup request");
 
     try {
       const response = await fetch("/api/auth", {
@@ -59,14 +83,16 @@ export default function RegisterPage() {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          action: "register",
+          action: "signup",
           email: formData.email,
           password: formData.password,
           name: formData.name,
         }),
       });
 
+      console.log("[Register] Response status:", response.status);
       const data = await response.json();
+      console.log("[Register] Response data:", data);
 
       if (!response.ok) {
         throw new Error(data.error || "Registration failed");
@@ -74,10 +100,11 @@ export default function RegisterPage() {
 
       toast({
         title: "Registration successful",
-        description: "Please check your email for the verification code.",
+        description: "Please verify your email address",
       });
       setShowOtpForm(true);
     } catch (error: any) {
+      console.error("[Register] Error:", error);
       toast({
         title: "Registration Failed",
         description: error.message,
@@ -99,10 +126,9 @@ export default function RegisterPage() {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          action: "verify",
+          action: "verify-email",
           email: formData.email,
           token: otp,
-          type: "signup",
         }),
       });
 
@@ -116,6 +142,11 @@ export default function RegisterPage() {
         title: "Account verified successfully",
         description: "Welcome to PlugToPlaylist!",
       });
+      
+      // Store user info and redirect to dashboard
+      if (data.user) {
+        localStorage.setItem("user", JSON.stringify(data.user));
+      }
       router.push("/dashboard");
     } catch (error: any) {
       toast({
@@ -128,12 +159,11 @@ export default function RegisterPage() {
     }
   };
 
-  const handleSocialLogin = async (provider: "google" | "github") => {
-    await supabase.auth.signInWithOAuth({
-      provider,
-      options: {
-        redirectTo: `${window.location.origin}/auth/callback`,
-      },
+  const handleSocialLogin = async () => {
+    toast({
+      title: "Not available",
+      description: "Social login has been disabled. Please use email/password.",
+      variant: "destructive",
     });
   };
 
@@ -251,7 +281,7 @@ export default function RegisterPage() {
                   <div className="space-y-2">
                     <Label htmlFor="otp" className="text-white">Verification Code</Label>
                     <InputOTP
-                      maxLength={8}
+                      maxLength={6}
                       value={otp}
                       onChange={(value) => setOtp(value)}
                       id="otp"
@@ -260,14 +290,12 @@ export default function RegisterPage() {
                         <InputOTPSlot index={0} />
                         <InputOTPSlot index={1} />
                         <InputOTPSlot index={2} />
-                        <InputOTPSlot index={3} />
                       </InputOTPGroup>
                       <InputOTPSeparator />
                       <InputOTPGroup>
+                        <InputOTPSlot index={3} />
                         <InputOTPSlot index={4} />
                         <InputOTPSlot index={5} />
-                        <InputOTPSlot index={6} />
-                        <InputOTPSlot index={7} />
                       </InputOTPGroup>
                     </InputOTP>
                   </div>
@@ -362,8 +390,9 @@ export default function RegisterPage() {
                     <input
                       type="checkbox"
                       id="terms"
+                      checked={agreeToTerms}
+                      onChange={(e) => setAgreeToTerms(e.target.checked)}
                       className="w-4 h-4 rounded border-gold/30 bg-luxury-lighter text-gold focus:ring-gold/30"
-                      required
                     />
                     <label htmlFor="terms" className="text-sm text-luxury-gray">
                       I agree to the{" "}
@@ -373,7 +402,13 @@ export default function RegisterPage() {
                     </label>
                   </div>
 
-                  <GoldButton type="submit" className="w-full" size="lg" loading={isLoading}>
+                  <GoldButton 
+                    type="submit" 
+                    className="w-full" 
+                    size="lg" 
+                    loading={isLoading}
+                    disabled={isLoading || !formData.name || !formData.email || !formData.password || !formData.confirmPassword || !agreeToTerms}
+                  >
                     {isLoading ? "Creating Account..." : "Create Account"}
                   </GoldButton>
                 </form>
@@ -392,7 +427,7 @@ export default function RegisterPage() {
               {/* Social Login */}
               <div className="grid grid-cols-2 gap-3">
                 <button 
-                  onClick={() => handleSocialLogin("google")}
+                  onClick={handleSocialLogin}
                   type="button"
                   className="flex items-center justify-center gap-2 px-4 py-3 rounded-lg border border-gold/20 bg-luxury-lighter hover:border-gold/40 hover:bg-luxury-lighter/50 transition-colors text-white"
                 >
@@ -405,7 +440,7 @@ export default function RegisterPage() {
                   <span className="text-sm">Google</span>
                 </button>
                 <button 
-                  onClick={() => handleSocialLogin("github")}
+                  onClick={handleSocialLogin}
                   type="button"
                   className="flex items-center justify-center gap-2 px-4 py-3 rounded-lg border border-gold/20 bg-luxury-lighter hover:border-gold/40 hover:bg-luxury-lighter/50 transition-colors text-white"
                 >

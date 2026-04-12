@@ -3,6 +3,8 @@ import { GeistSans } from "geist/font/sans";
 import { GeistMono } from "geist/font/mono";
 import "./globals.css";
 import { Toaster } from "@/components/ui/toaster";
+import { AuthProvider } from "@/context/auth-context";
+import { AdminAuthProvider } from "@/context/admin-auth-context";
 
 export const metadata: Metadata = {
   title: "PlugToPlaylist - Premium Music Promotion Platform",
@@ -34,8 +36,12 @@ export default function RootLayout({
       <body
         className={`${GeistSans.variable} ${GeistMono.variable} antialiased`}
       >
-        {children}
-        <Toaster />
+        <AdminAuthProvider>
+          <AuthProvider>
+            {children}
+            <Toaster />
+          </AuthProvider>
+        </AdminAuthProvider>
       </body>
     </html>
   );
