@@ -5,12 +5,9 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    image: plugtoplaylist-app:latest
+    image: samisell/plugtoplaylist-app:latest
     container_name: plugtoplaylist-app
     working_dir: /usr/src/app
-    volumes:
-      - .:/usr/src/app
-      - /usr/src/app/node_modules
     ports:
       - "3000:3000"
     environment:
@@ -22,6 +19,7 @@ services:
     command: ["npm", "run", "start"]
     depends_on:
       - db
+    restart: always
 
   db:
     image: mysql:8.0
