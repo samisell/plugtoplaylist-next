@@ -5,9 +5,12 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    image: samisell/plugtoplaylist-app:latest
+    # The 'image' field is removed as Portainer will build the image from the Dockerfile
     container_name: plugtoplaylist-app
     working_dir: /usr/src/app
+    volumes:
+      - .:/usr/src/app
+      - /usr/src/app/node_modules
     ports:
       - "3000:3000"
     environment:
