@@ -19,14 +19,40 @@ services:
       timeout: 5s
       retries: 20
 
+  git-sync:
+    image: alpine/git:2.47.2
+    container_name: plugtoplaylist-git-sync
+    restart: "no"
+    environment:
+      GIT_REPO: "https://github.com/samisell/plugtoplaylist-next.git"
+      GIT_BRANCH: "main"
+    dns:
+      - 1.1.1.1
+      - 8.8.8.8
+    volumes:
+      - app_code:/workspace
+    command: >
+      sh -lc '
+      set -e;
+      if [ ! -d /workspace/.git ]; then
+        git clone --branch "$$GIT_BRANCH" --single-branch "$$GIT_REPO" /workspace;
+      else
+        cd /workspace;
+        git fetch origin "$$GIT_BRANCH";
+        git reset --hard "origin/$$GIT_BRANCH";
+      fi
+      '
+
   plugtoplaylist:
-    build:
-      context: .
-      dockerfile: Dockerfile
+    image: node:18-bullseye-slim
     container_name: plugtoplaylist-next
     restart: unless-stopped
     depends_on:
       - mysql
+      - git-sync
+    dns:
+      - 1.1.1.1
+      - 8.8.8.8
     ports:
       - "3000:3000"
     environment:
@@ -50,11 +76,22 @@ services:
       NEXT_PUBLIC_TURNSTILE_ENABLED: "${NEXT_PUBLIC_TURNSTILE_ENABLED:-}"
       NEXT_PUBLIC_TURNSTILE_SITE_KEY: "${NEXT_PUBLIC_TURNSTILE_SITE_KEY:-}"
       TURNSTILE_SECRET_KEY: "${TURNSTILE_SECRET_KEY:-}"
+    volumes:
+      - app_code:/workspace
+    working_dir: /workspace
     command: >
       sh -lc '
+      until [ -f /workspace/package.json ]; do
+        echo "Waiting for repository sync...";
+        sleep 2;
+      done;
+      npm install;
+      npx prisma generate;
+      npm run build;
       npx prisma migrate deploy || true;
       node .next/standalone/server.js
       '
 
 volumes:
+  app_code:
   mysql_data:
