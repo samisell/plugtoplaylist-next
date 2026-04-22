@@ -41,8 +41,6 @@ ENV TURNSTILE_SECRET_KEY="build"
 # Generate Prisma Client
 RUN npx prisma generate
 
-RUN npm run build
-
 # Production image, copy all the files and run next
 FROM node:18-bullseye-slim AS runner
 WORKDIR /app
@@ -55,11 +53,9 @@ RUN addgroup --system --gid 1001 nodejs
 RUN adduser --system --uid 1001 nextjs
 
 COPY package.json package-lock.json* ./
-RUN npm install --omit=dev && npm cache clean --force
+RUN npm install && npm cache clean --force
 
-COPY --from=builder /app/public ./public
-COPY --from=builder /app/.next ./.next
-COPY --from=builder /app/prisma ./prisma
+COPY --from=builder /app ./
 RUN chown -R nextjs:nodejs /app
 
 USER nextjs
@@ -68,4 +64,4 @@ EXPOSE 3000
 
 ENV PORT 3000
 
-CMD ["node", ".next/standalone/server.js"]
+CMD ["sh", "-lc", "npm run build && node .next/standalone/server.js"]
