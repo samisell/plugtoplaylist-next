@@ -2,7 +2,7 @@ version: "3.9"
 
 services:
   mysql:
-    image: mysql:8.0
+    image: mysql:5.7
     restart: unless-stopped
     environment:
       MYSQL_DATABASE: "playlists"
@@ -18,34 +18,13 @@ services:
       timeout: 5s
       retries: 20
 
-  git-sync:
-    image: alpine/git:2.47.2
-    restart: "no"
-    environment:
-      GIT_REPO: "https://github.com/samisell/plugtoplaylist-next.git"
-      GIT_BRANCH: "main"
-    dns:
-      - 1.1.1.1
-      - 8.8.8.8
-    volumes:
-      - app_code:/workspace
-    entrypoint: ["/bin/sh", "-lc"]
-    command: >
-      set -e;
-      if [ ! -d /workspace/.git ]; then
-        git clone --branch "$$GIT_BRANCH" --single-branch "$$GIT_REPO" /workspace;
-      else
-        cd /workspace;
-        git fetch origin "$$GIT_BRANCH";
-        git reset --hard "origin/$$GIT_BRANCH";
-      fi
-
   plugtoplaylist:
-    image: node:18-bullseye-slim
+    build:
+      context: .
+      dockerfile: Dockerfile
     restart: unless-stopped
     depends_on:
       - mysql
-      - git-sync
     dns:
       - 1.1.1.1
       - 8.8.8.8
@@ -72,28 +51,11 @@ services:
       NEXT_PUBLIC_TURNSTILE_ENABLED: "${NEXT_PUBLIC_TURNSTILE_ENABLED:-}"
       NEXT_PUBLIC_TURNSTILE_SITE_KEY: "${NEXT_PUBLIC_TURNSTILE_SITE_KEY:-}"
       TURNSTILE_SECRET_KEY: "${TURNSTILE_SECRET_KEY:-}"
-    volumes:
-      - app_code:/workspace
-    working_dir: /workspace
     command: >
       sh -lc '
-      i=0;
-      until [ -f /workspace/package.json ]; do
-        i=$$((i+1));
-        if [ "$$i" -gt 90 ]; then
-          echo "Repository sync timeout";
-          exit 1;
-        fi;
-        echo "Waiting for repository sync...";
-        sleep 2;
-      done;
-      npm install;
-      npx prisma generate;
-      npm run build;
       npx prisma migrate deploy || true;
       node .next/standalone/server.js
       '
 
 volumes:
-  app_code:
   mysql_data:
