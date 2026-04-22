@@ -3,7 +3,6 @@ version: "3.9"
 services:
   mysql:
     image: mysql:8.0
-    container_name: plugtoplaylist-mysql
     restart: unless-stopped
     environment:
       MYSQL_DATABASE: "playlists"
@@ -21,7 +20,6 @@ services:
 
   git-sync:
     image: alpine/git:2.47.2
-    container_name: plugtoplaylist-git-sync
     restart: "no"
     environment:
       GIT_REPO: "https://github.com/samisell/plugtoplaylist-next.git"
@@ -31,8 +29,8 @@ services:
       - 8.8.8.8
     volumes:
       - app_code:/workspace
+    entrypoint: ["/bin/sh", "-lc"]
     command: >
-      sh -lc '
       set -e;
       if [ ! -d /workspace/.git ]; then
         git clone --branch "$$GIT_BRANCH" --single-branch "$$GIT_REPO" /workspace;
@@ -41,11 +39,9 @@ services:
         git fetch origin "$$GIT_BRANCH";
         git reset --hard "origin/$$GIT_BRANCH";
       fi
-      '
 
   plugtoplaylist:
     image: node:18-bullseye-slim
-    container_name: plugtoplaylist-next
     restart: unless-stopped
     depends_on:
       - mysql
@@ -81,7 +77,13 @@ services:
     working_dir: /workspace
     command: >
       sh -lc '
+      i=0;
       until [ -f /workspace/package.json ]; do
+        i=$$((i+1));
+        if [ "$$i" -gt 90 ]; then
+          echo "Repository sync timeout";
+          exit 1;
+        fi;
         echo "Waiting for repository sync...";
         sleep 2;
       done;
