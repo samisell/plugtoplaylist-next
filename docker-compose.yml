@@ -23,7 +23,6 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    image: plugtoplaylist-next:latest
     container_name: plugtoplaylist-next
     restart: unless-stopped
     depends_on:
