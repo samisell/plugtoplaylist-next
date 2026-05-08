@@ -107,12 +107,13 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Track URL and Plan ID are required" }, { status: 400 });
     }
 
-    if (!userId) {
+    // If no userId is provided (guest), generate a consistent unique identifier.
+    // Prisma's cuid() and randomUUID() are both valid, but consistency is key.
+    if (!userId || typeof userId !== "string" || !userId.trim()) {
       userId = randomUUID();
     }
 
-    // Validate userId is a non-empty string (supports both UUID and Prisma cuid formats)
-    if (typeof userId !== "string" || !userId.trim()) {
+    if (!userId) {
       return NextResponse.json(
         {
           error: "Session expired",
