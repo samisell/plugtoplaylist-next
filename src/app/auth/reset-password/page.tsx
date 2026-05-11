@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import { motion } from "framer-motion";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
+import { Suspense } from "react";
 import { Lock, ArrowLeft, Eye, EyeOff, Loader2, Music } from "lucide-react";
 import { GoldButton, GlowCard } from "@/components/shared";
 import { Input } from "@/components/ui/input";
@@ -11,7 +12,7 @@ import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/use-auth";
 
-export default function ResetPasswordPage() {
+function ResetPasswordContent() {
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [email, setEmail] = useState("");
@@ -295,5 +296,17 @@ export default function ResetPasswordPage() {
         </div>
       </div>
     </div>
+  );
+}
+
+export default function ResetPasswordPage() {
+  return (
+    <Suspense fallback={
+      <div className="min-h-screen bg-luxury-black flex items-center justify-center">
+        <Loader2 className="w-12 h-12 animate-spin text-gold" />
+      </div>
+    }>
+      <ResetPasswordContent />
+    </Suspense>
   );
 }

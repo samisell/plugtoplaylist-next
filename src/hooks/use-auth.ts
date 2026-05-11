@@ -56,7 +56,11 @@ export function useRequireGuest() {
 
   useEffect(() => {
     if (!isLoading && user) {
-      router.push("/dashboard");
+      if (user.role === "admin") {
+        router.push("/admin");
+      } else {
+        router.push("/dashboard");
+      }
     }
   }, [user, isLoading, router]);
 

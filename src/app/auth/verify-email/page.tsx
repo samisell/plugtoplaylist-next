@@ -14,10 +14,11 @@ import {
   InputOTPSeparator,
   InputOTPSlot,
 } from "@/components/ui/input-otp";
+import { Suspense } from "react";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/use-auth";
 
-export default function VerifyEmailPage() {
+function VerifyEmailContent() {
   const [email, setEmail] = useState("");
   const [otp, setOtp] = useState("");
   const [step, setStep] = useState<"email" | "code">("email");
@@ -275,5 +276,17 @@ export default function VerifyEmailPage() {
         </div>
       </div>
     </div>
+  );
+}
+
+export default function VerifyEmailPage() {
+  return (
+    <Suspense fallback={
+      <div className="min-h-screen bg-luxury-black flex items-center justify-center">
+        <Loader2 className="w-12 h-12 animate-spin text-gold" />
+      </div>
+    }>
+      <VerifyEmailContent />
+    </Suspense>
   );
 }

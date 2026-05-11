@@ -58,7 +58,7 @@ export default function AdminPaymentsPage() {
   const [loading, setLoading] = useState(true);
   const [stats, setStats] = useState({
     totalRevenue: 0,
-    paidPayments: 0,
+    completedPayments: 0,
     pendingPayments: 0,
     totalRefunds: 0,
   });
@@ -172,7 +172,7 @@ export default function AdminPaymentsPage() {
   const formattedStats = [
     {
       title: "Total Revenue",
-      value: `£${stats.totalRevenue.toLocaleString()}`,
+      value: `£${(stats?.totalRevenue || 0).toLocaleString()}`,
       change: "+23.1%",
       isPositive: true,
       icon: DollarSign,
@@ -180,7 +180,7 @@ export default function AdminPaymentsPage() {
     },
     {
       title: "Successful Payments",
-      value: stats.paidPayments.toString(),
+      value: (stats?.completedPayments || 0).toString(),
       change: "+12",
       isPositive: true,
       icon: CheckCircle2,
@@ -188,7 +188,7 @@ export default function AdminPaymentsPage() {
     },
     {
       title: "Pending Payments",
-      value: stats.pendingPayments.toString(),
+      value: (stats?.pendingPayments || 0).toString(),
       change: "-3",
       isPositive: true,
       icon: Clock,
@@ -196,7 +196,7 @@ export default function AdminPaymentsPage() {
     },
     {
       title: "Refunds",
-      value: `£${stats.totalRefunds.toLocaleString()}`,
+      value: `£${(stats?.totalRefunds || 0).toLocaleString()}`,
       change: "+2.5%",
       isPositive: false,
       icon: RefreshCw,

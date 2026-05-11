@@ -9,3 +9,6 @@ yarn-error.log
 .git
 .gitignore
 README.md
+plugtoplaylist-next
+*.tar
+*.zip

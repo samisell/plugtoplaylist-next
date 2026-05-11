@@ -1,5 +1,5 @@
 import { PrismaClient } from "@prisma/client";
-import bcrypt from "bcrypt";
+import bcrypt from "bcryptjs";
 import { randomBytes } from "crypto";
 
 const prisma = new PrismaClient();
@@ -28,22 +28,23 @@ async function main() {
         where: { email: adminData.email },
       });
 
+      const hashedPassword = await bcrypt.hash(adminData.password, 10);
+
       if (existingUser) {
-        console.log(`✓ User ${adminData.email} already exists (skipping)`);
+        console.log(`✓ User ${adminData.email} already exists (updating)`);
         
-        // Update role to admin if not already
-        if (existingUser.role !== "admin") {
-          await prisma.user.update({
-            where: { email: adminData.email },
-            data: { role: "admin" },
-          });
-          console.log(`  Updated role to admin`);
-        }
+        await prisma.user.update({
+          where: { email: adminData.email },
+          data: { 
+            role: "admin",
+            password: hashedPassword,
+            emailVerified: new Date(),
+          },
+        });
         continue;
       }
 
       // Hash password
-      const hashedPassword = await bcrypt.hash(adminData.password, 10);
       const referralCode = randomBytes(4).toString("hex").toUpperCase();
 
       // Create admin user

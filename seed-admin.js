@@ -1,5 +1,5 @@
 const { PrismaClient } = require("@prisma/client");
-const bcrypt = require("bcrypt");
+const bcrypt = require("bcryptjs");
 const { randomBytes } = require("crypto");
 
 const prisma = new PrismaClient();
@@ -27,20 +27,21 @@ async function main() {
         where: { email: adminData.email },
       });
 
+      const hashedPassword = await bcrypt.hash(adminData.password, 10);
+      
       if (existingUser) {
-        console.log(`✓ User ${adminData.email} already exists (skipping)`);
-
-        if (existingUser.role !== "admin") {
-          await prisma.user.update({
-            where: { email: adminData.email },
-            data: { role: "admin" },
-          });
-          console.log(`  Updated role to admin`);
-        }
+        console.log(`✓ User ${adminData.email} already exists (updating)`);
+        await prisma.user.update({
+          where: { email: adminData.email },
+          data: { 
+            role: "admin",
+            password: hashedPassword, // Reset password to the one in this script
+            emailVerified: new Date(),
+          },
+        });
         continue;
       }
 
-      const hashedPassword = await bcrypt.hash(adminData.password, 10);
       const referralCode = randomBytes(4).toString("hex").toUpperCase();
 
       const user = await prisma.user.create({

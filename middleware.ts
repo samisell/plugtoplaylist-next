@@ -53,14 +53,19 @@ export function middleware(request: NextRequest) {
   // Check if accessing user auth routes
   const isUserAuthRoute = authRoutes.some((route) => pathname === route);
 
-  // Redirect unauthenticated users from protected routes to login (but not if they're admin)
-  if (isProtectedUserRoute && !isUserAuthenticated && !isAdminAuthenticated) {
-    return NextResponse.redirect(new URL("/login", request.url));
+  // Redirect authenticated users/admins from auth routes
+  if (isUserAuthRoute) {
+    if (isAdminAuthenticated) {
+      return NextResponse.redirect(new URL("/admin", request.url));
+    }
+    if (isUserAuthenticated) {
+      return NextResponse.redirect(new URL("/dashboard", request.url));
+    }
   }
 
-  // Redirect authenticated users from auth routes to dashboard
-  if (isUserAuthRoute && isUserAuthenticated && !isAdminAuthenticated) {
-    return NextResponse.redirect(new URL("/dashboard", request.url));
+  // Redirect unauthenticated users from protected routes to login
+  if (isProtectedUserRoute && !isUserAuthenticated && !isAdminAuthenticated) {
+    return NextResponse.redirect(new URL("/login", request.url));
   }
 
   return NextResponse.next();

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
 import { motion } from "framer-motion";
 import Link from "next/link";
@@ -17,7 +17,7 @@ import {
 } from "lucide-react";
 import { Header, Footer, GoldButton } from "@/components/shared";
 
-export default function PaymentCheckoutPage() {
+function PaymentCheckoutContent() {
   const searchParams = useSearchParams();
   const submissionId = searchParams.get("submissionId");
   const amount = searchParams.get("amount");
@@ -359,5 +359,24 @@ export default function PaymentCheckoutPage() {
 
       <Footer />
     </div>
+  );
+}
+
+export default function PaymentCheckoutPage() {
+  return (
+    <Suspense fallback={
+      <div className="min-h-screen bg-luxury-black flex flex-col">
+        <Header />
+        <main className="flex-1 pt-20 flex items-center justify-center p-4">
+          <div className="text-center">
+            <Loader2 className="w-12 h-12 animate-spin text-gold mx-auto mb-4" />
+            <p className="text-luxury-gray">Loading payment details...</p>
+          </div>
+        </main>
+        <Footer />
+      </div>
+    }>
+      <PaymentCheckoutContent />
+    </Suspense>
   );
 }

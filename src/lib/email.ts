@@ -85,6 +85,124 @@ export async function sendVerificationEmail(to: string, token: string) {
   });
 }
 
+export async function sendEmail(to: string, subject: string, html: string) {
+  await transporter.sendMail({
+    from: process.env.SMTP_USER,
+    to: to,
+    subject: subject,
+    html: html,
+  });
+}
+
+export async function sendPaymentConfirmationEmail(to: string, amount: number, currency: string, paymentId: string) {
+  const appUrl = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
+  
+  await transporter.sendMail({
+    from: process.env.SMTP_USER,
+    to: to,
+    subject: `Payment Confirmation - ${process.env.SITE_NAME}`,
+    html: `
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <style>
+          body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; line-height: 1.6; color: #333; }
+          .container { max-width: 600px; margin: 0 auto; padding: 20px; }
+          .header { background: linear-gradient(135deg, #d4af37 0%, #f4a460 100%); padding: 30px; border-radius: 8px 8px 0 0; color: white; text-align: center; }
+          .content { background: #f9f9f9; padding: 30px; border-radius: 0 0 8px 8px; }
+          .payment-details { background: white; padding: 20px; border-radius: 8px; margin: 20px 0; border: 1px solid #ddd; }
+          .footer { text-align: center; color: #999; font-size: 12px; margin-top: 20px; padding-top: 20px; border-top: 1px solid #ddd; }
+        </style>
+      </head>
+      <body>
+        <div class="container">
+          <div class="header">
+            <h1 style="margin: 0; font-size: 28px;">Payment Confirmed!</h1>
+            <p style="margin: 10px 0 0 0; opacity: 0.9;">Thank you for your payment</p>
+          </div>
+          
+          <div class="content">
+            <p>Hello,</p>
+            <p>Your payment has been successfully processed. Here are the details:</p>
+            
+            <div class="payment-details">
+              <h3>Payment Details</h3>
+              <p><strong>Amount:</strong> ${amount} ${currency.toUpperCase()}</p>
+              <p><strong>Payment ID:</strong> ${paymentId}</p>
+              <p><strong>Date:</strong> ${new Date().toLocaleDateString()}</p>
+            </div>
+            
+            <p>Thank you for choosing ${process.env.SITE_NAME}!</p>
+            
+            <div class="footer">
+              <p style="margin: 0;">© ${new Date().getFullYear()} ${process.env.SITE_NAME}. All rights reserved.</p>
+            </div>
+          </div>
+        </div>
+      </body>
+      </html>
+    `,
+  });
+}
+
+export async function sendNewPaymentAdminNotification(customerEmail: string, amount: number, currency: string, paymentId: string) {
+  const adminEmail = process.env.NEXT_PUBLIC_SUPPORT_EMAIL || "support@plugtoplaylist.com";
+  
+  await transporter.sendMail({
+    from: process.env.SMTP_USER,
+    to: adminEmail,
+    subject: `New Payment Received - ${process.env.SITE_NAME}`,
+    html: `
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <style>
+          body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; line-height: 1.6; color: #333; }
+          .container { max-width: 600px; margin: 0 auto; padding: 20px; }
+          .header { background: linear-gradient(135deg, #d4af37 0%, #f4a460 100%); padding: 30px; border-radius: 8px 8px 0 0; color: white; text-align: center; }
+          .content { background: #f9f9f9; padding: 30px; border-radius: 0 0 8px 8px; }
+          .payment-details { background: white; padding: 20px; border-radius: 8px; margin: 20px 0; border: 1px solid #ddd; }
+          .footer { text-align: center; color: #999; font-size: 12px; margin-top: 20px; padding-top: 20px; border-top: 1px solid #ddd; }
+        </style>
+      </head>
+      <body>
+        <div class="container">
+          <div class="header">
+            <h1 style="margin: 0; font-size: 28px;">New Payment Received!</h1>
+            <p style="margin: 10px 0 0 0; opacity: 0.9;">A new payment has been processed</p>
+          </div>
+          
+          <div class="content">
+            <p>Hello Admin,</p>
+            <p>A new payment has been received. Here are the details:</p>
+            
+            <div class="payment-details">
+              <h3>Payment Information</h3>
+              <p><strong>Customer Email:</strong> <a href="mailto:${customerEmail}">${customerEmail}</a></p>
+              <p><strong>Amount:</strong> ${amount} ${currency.toUpperCase()}</p>
+              <p><strong>Payment ID:</strong> ${paymentId}</p>
+              <p><strong>Date:</strong> ${new Date().toLocaleDateString()}</p>
+            </div>
+            
+            <p style="text-align: center;">
+              <a href="mailto:${customerEmail}" style="background: #d4af37; color: white; padding: 10px 20px; text-decoration: none; border-radius: 4px; display: inline-block;">Contact Customer</a>
+            </p>
+            
+            <div class="footer">
+              <p style="margin: 0;">© ${new Date().getFullYear()} ${process.env.SITE_NAME}. All rights reserved.</p>
+            </div>
+          </div>
+        </div>
+      </body>
+      </html>
+    `,
+  });
+}
+
 export async function sendPasswordResetEmail(to: string, token: string) {
   const appUrl = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
   const resetLink = `${appUrl}/auth/reset-password?token=${token}&email=${to}`;

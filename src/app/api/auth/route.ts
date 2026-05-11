@@ -1,12 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import { randomBytes, randomUUID, randomInt } from "crypto";
 import { db } from "@/lib/db";
-import bcrypt from "bcrypt";
+import bcrypt from "bcryptjs";
 import { sendVerificationEmail, sendPasswordResetEmail } from "@/lib/email";
 
 export const dynamic = "force-dynamic";
 
 const SESSION_COOKIE = "ptp_user_id";
+const ADMIN_SESSION_COOKIE = "ptp_admin_id";
 
 function userPayload(user: any) {
   return {
@@ -188,12 +189,25 @@ export async function POST(request: NextRequest) {
         user: userPayload(user),
       });
 
+      if (user.role === "admin") {
+        response.cookies.set({
+          name: ADMIN_SESSION_COOKIE,
+          value: user.id,
+          httpOnly: true,
+          sameSite: "lax",
+          path: "/",
+          secure: process.env.NODE_ENV === "production",
+          maxAge: 60 * 60 * 24 * 30,
+        });
+      }
+
       return withSessionCookie(response, user.id);
     }
 
     if (action === "logout") {
       const response = NextResponse.json({ message: "Logged out successfully" });
-      response.cookies.set(SESSION_COOKIE, "", { maxAge: 0 });
+      response.cookies.set(SESSION_COOKIE, "", { maxAge: 0, path: "/" });
+      response.cookies.set(ADMIN_SESSION_COOKIE, "", { maxAge: 0, path: "/" });
       return response;
     }
 

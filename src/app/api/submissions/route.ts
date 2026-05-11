@@ -1,14 +1,17 @@
 import { NextRequest, NextResponse } from "next/server";
 import Stripe from "stripe";
-import { randomBytes, randomUUID } from "crypto";
+import { randomBytes, randomUUID } from "node:crypto";
 import { db } from "@/lib/db";
 import { getTrackMetadata } from "@/lib/metadata";
+import { Submission, Payment } from "@prisma/client";
 
 export const dynamic = "force-dynamic";
 
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!);
+const stripeSecretKey = process.env.STRIPE_SECRET_KEY;
 
-function mapSubmission(submission: any) {
+type SubmissionWithPayment = Submission & { payment?: Payment | null };
+
+function mapSubmission(submission: SubmissionWithPayment) {
   const mappedPayment = submission.payment
     ? {
         ...submission.payment,
@@ -113,16 +116,6 @@ export async function POST(request: NextRequest) {
       userId = randomUUID();
     }
 
-    if (!userId) {
-      return NextResponse.json(
-        {
-          error: "Session expired",
-          details: "Invalid user session. Please refresh the page and try again.",
-        },
-        { status: 401 }
-      );
-    }
-
     try {
       const metadata = await getTrackMetadata(trackUrl);
       if (metadata) {
@@ -174,6 +167,18 @@ export async function POST(request: NextRequest) {
       },
     });
 
+    if (!stripeSecretKey) {
+      return NextResponse.json(
+        { 
+          submission: mapSubmission(submission),
+          checkoutUrl: null,
+          error: "Stripe not configured - payment processing unavailable"
+        },
+        { status: 201 }
+      );
+    }
+
+    const stripe = new Stripe(stripeSecretKey);
     const session = await stripe.checkout.sessions.create({
       payment_method_types: ["card"],
       line_items: [

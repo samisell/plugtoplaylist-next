@@ -5,10 +5,16 @@ import { sendPaymentConfirmationEmail, sendNewPaymentAdminNotification } from "@
 
 export const dynamic = "force-dynamic";
 
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!);
-const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET!;
+const stripeSecretKey = process.env.STRIPE_SECRET_KEY;
+const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET;
 
 export async function POST(request: NextRequest) {
+  if (!stripeSecretKey || !webhookSecret) {
+    console.warn("Stripe environment variables not configured");
+    return NextResponse.json({ error: "Stripe configuration missing" }, { status: 501 });
+  }
+
+  const stripe = new Stripe(stripeSecretKey);
   const signature = request.headers.get("stripe-signature");
   const body = await request.text();
 

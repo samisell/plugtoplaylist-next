@@ -107,28 +107,28 @@ export default function AdminUsersPage() {
   const formattedStats = [
     {
       title: "Total Users",
-      value: stats.totalUsers.toString(),
+      value: (stats?.totalUsers || 0).toString(),
       change: "+12.5%",
       icon: Users,
       color: "gold" as const,
     },
     {
       title: "Active Users",
-      value: stats.activeUsers.toString(),
+      value: (stats?.activeUsers || 0).toString(),
       change: "+8.2%",
       icon: CheckCircle2,
       color: "green" as const,
     },
     {
       title: "Premium Users",
-      value: stats.premiumUsers.toString(),
+      value: (stats?.premiumUsers || 0).toString(),
       change: "+15",
       icon: Shield,
       color: "orange" as const,
     },
     {
       title: "Total Revenue",
-      value: `£${stats.totalRevenue.toLocaleString()}`,
+      value: `£${(stats?.totalRevenue || 0).toLocaleString()}`,
       change: "+23.1%",
       icon: DollarSign,
       color: "blue" as const,

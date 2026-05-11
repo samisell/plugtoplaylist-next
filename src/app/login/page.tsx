@@ -28,12 +28,17 @@ export default function LoginPage() {
     setIsLoading(true);
 
     try {
-      await login(formData.email, formData.password);
+      const user = await login(formData.email, formData.password);
       toast({
         title: "Success",
         description: "You have been signed in successfully",
       });
-      router.push("/dashboard");
+      
+      if (user.role === "admin") {
+        router.push("/admin");
+      } else {
+        router.push("/dashboard");
+      }
     } catch (error: any) {
       toast({
         title: "Login Failed",
